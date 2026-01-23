@@ -4,3 +4,5 @@ export { RadarChart } from './RadarChart';
 export { ActionTracker } from './ActionTracker';
 export { StepIndicator } from './StepIndicator';
 export { MemberSelector } from './MemberSelector';
+export { AdminCodeModal } from './AdminCodeModal';
+export { ProtectedRoute } from './ProtectedRoute';

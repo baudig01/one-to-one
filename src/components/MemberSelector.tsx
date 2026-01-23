@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Plus, User, Trash2, Edit2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
 import type { TeamMember } from '../types';
 
 interface MemberSelectorProps {
   members: TeamMember[];
   selectedMemberId: string | null;
   onSelect: (memberId: string) => void;
-  onAddMember: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
-  onDeleteMember: (memberId: string) => void;
-  onEditMember: (member: TeamMember) => void;
+  onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
+  onDeleteMember?: (memberId: string) => void;
+  onEditMember?: (member: TeamMember) => void;
+  isAdmin?: boolean;
 }
 
 export function MemberSelector({
@@ -18,6 +19,7 @@ export function MemberSelector({
   onAddMember,
   onDeleteMember,
   onEditMember,
+  isAdmin = false,
 }: MemberSelectorProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function MemberSelector({
   const [editRole, setEditRole] = useState('');
 
   const handleAdd = () => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !onAddMember) return;
     onAddMember({ name: newName.trim(), role: newRole.trim() || 'Développeur' });
     setNewName('');
     setNewRole('');
@@ -41,7 +43,7 @@ export function MemberSelector({
   };
 
   const handleEdit = (member: TeamMember) => {
-    if (!editName.trim()) return;
+    if (!editName.trim() || !onEditMember) return;
     onEditMember({ ...member, name: editName.trim(), role: editRole.trim() || 'Développeur' });
     setEditingId(null);
   };
@@ -120,70 +122,74 @@ export function MemberSelector({
                   </div>
                 </div>
 
-                {/* Edit/Delete buttons */}
-                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); startEditing(member); }}
-                    className="p-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-500"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onDeleteMember(member.id); }}
-                    className="p-1.5 bg-red-50 rounded-lg hover:bg-red-100 text-red-500"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                {/* Edit/Delete buttons - Admin only */}
+                {isAdmin && (
+                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); startEditing(member); }}
+                      className="p-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-500"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onDeleteMember?.(member.id); }}
+                      className="p-1.5 bg-red-50 rounded-lg hover:bg-red-100 text-red-500"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
         ))}
 
-        {/* Add Member Button/Form */}
-        {isAdding ? (
-          <div className="p-4 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50 space-y-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Nom du membre"
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              autoFocus
-            />
-            <input
-              type="text"
-              value={newRole}
-              onChange={(e) => setNewRole(e.target.value)}
-              placeholder="Rôle (ex: Dev Front)"
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleAdd}
-                disabled={!newName.trim()}
-                className="flex-1 p-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
-              >
-                Ajouter
-              </button>
-              <button
-                onClick={() => { setIsAdding(false); setNewName(''); setNewRole(''); }}
-                className="p-2 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300"
-              >
-                <X className="w-4 h-4" />
-              </button>
+        {/* Add Member Button/Form - Admin only */}
+        {isAdmin && (
+          isAdding ? (
+            <div className="p-4 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50 space-y-2">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Nom du membre"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                autoFocus
+              />
+              <input
+                type="text"
+                value={newRole}
+                onChange={(e) => setNewRole(e.target.value)}
+                placeholder="Rôle (ex: Dev Front)"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAdd}
+                  disabled={!newName.trim()}
+                  className="flex-1 p-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                >
+                  Ajouter
+                </button>
+                <button
+                  onClick={() => { setIsAdding(false); setNewName(''); setNewRole(''); }}
+                  className="p-2 bg-gray-200 text-gray-600 rounded-lg hover:bg-gray-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="p-4 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50
-                       hover:border-primary-400 hover:bg-primary-50 transition-all
-                       flex items-center justify-center gap-2 text-gray-500 hover:text-primary-600"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Ajouter un membre</span>
-          </button>
+          ) : (
+            <button
+              onClick={() => setIsAdding(true)}
+              className="p-4 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50
+                         hover:border-primary-400 hover:bg-primary-50 transition-all
+                         flex items-center justify-center gap-2 text-gray-500 hover:text-primary-600"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Ajouter un membre</span>
+            </button>
+          )
         )}
       </div>
     </div>

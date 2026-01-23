@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DashboardPage, MeetingPage } from './pages';
+import { ProtectedRoute } from './components';
 import { useData } from './hooks/useData';
 import { Loader2, Database, HardDrive } from 'lucide-react';
 
@@ -67,26 +68,43 @@ function App() {
       </div>
 
       <Routes>
+        {/* Mode lecture - membres */}
         <Route
           path="/"
           element={
             <DashboardPage
               members={members}
               meetings={meetings}
-              onAddMember={addMember}
-              onDeleteMember={deleteMember}
-              onEditMember={updateMember}
+              isAdmin={false}
             />
+          }
+        />
+        {/* Mode admin - lead (protégé) */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <DashboardPage
+                members={members}
+                meetings={meetings}
+                onAddMember={addMember}
+                onDeleteMember={deleteMember}
+                onEditMember={updateMember}
+                isAdmin={true}
+              />
+            </ProtectedRoute>
           }
         />
         <Route
           path="/meeting/:memberId"
           element={
-            <MeetingPage
-              members={members}
-              meetings={meetings}
-              onSaveMeeting={addMeeting}
-            />
+            <ProtectedRoute>
+              <MeetingPage
+                members={members}
+                meetings={meetings}
+                onSaveMeeting={addMeeting}
+              />
+            </ProtectedRoute>
           }
         />
       </Routes>

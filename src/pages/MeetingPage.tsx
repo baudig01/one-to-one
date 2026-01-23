@@ -121,7 +121,7 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
         return (
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-800 mb-6">
-              🎯 Wins & Pains
+              🎯 Réussites & Difficultés
             </h2>
             <WinsPains items={winsPains} onChange={setWinsPains} />
           </div>
@@ -182,14 +182,14 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
                 <div className="text-2xl font-bold text-green-600">
                   {winsPains.filter(w => w.type === 'win').length}
                 </div>
-                <div className="text-xs text-gray-500">Wins</div>
+                <div className="text-xs text-gray-500">Réussites</div>
               </div>
               <div className="text-center p-4 bg-red-50 rounded-lg">
                 <div className="text-3xl mb-1">😤</div>
                 <div className="text-2xl font-bold text-red-600">
                   {winsPains.filter(w => w.type === 'pain').length}
                 </div>
-                <div className="text-xs text-gray-500">Pains</div>
+                <div className="text-xs text-gray-500">Difficultés</div>
               </div>
             </div>
 
