@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Save, Clock } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Save, Clock, BookOpen } from 'lucide-react';
 import {
   MoodSlider,
   WinsPains,
@@ -17,6 +17,7 @@ import type {
   ActionItem,
   TeamMember,
 } from '../types';
+import { fetchPendingNotes, markNotesAsUsed } from '../services/firebase';
 
 interface MeetingPageProps {
   members: TeamMember[];
@@ -26,11 +27,9 @@ interface MeetingPageProps {
 
 const DEFAULT_MOOD: MoodEntry = { mood: 5, energy: 5 };
 const DEFAULT_RADAR: RadarData = {
-  codeQuality: 3,
   process: 3,
-  teamwork: 3,
-  workload: 3,
-  growth: 3,
+  ambiance: 3,
+  work: 3,
 };
 
 const STEPS: MeetingStep[] = ['pulse', 'wins-pains', 'radar', 'actions', 'summary'];
@@ -54,12 +53,42 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
   );
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(0);
+  const [pendingNoteIds, setPendingNoteIds] = useState<string[]>([]);
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const [leadComment, setLeadComment] = useState('');
 
   useEffect(() => {
     if (!member) {
       navigate('/');
     }
   }, [member, navigate]);
+
+  // Load pending notes from member's notebook
+  useEffect(() => {
+    const loadPendingNotes = async () => {
+      if (!memberId || notesLoaded) return;
+
+      try {
+        const notes = await fetchPendingNotes(memberId);
+        if (notes.length > 0) {
+          // Convert notes to WinPainItems
+          const noteItems: WinPainItem[] = notes.map(note => ({
+            id: note.id,
+            type: note.type,
+            text: note.text,
+          }));
+          setWinsPains(noteItems);
+          setPendingNoteIds(notes.map(n => n.id));
+        }
+        setNotesLoaded(true);
+      } catch (error) {
+        console.error('Error loading pending notes:', error);
+        setNotesLoaded(true);
+      }
+    };
+
+    loadPendingNotes();
+  }, [memberId, notesLoaded]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -90,19 +119,31 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const meetingId = crypto.randomUUID();
     const meeting: Meeting = {
-      id: crypto.randomUUID(),
+      id: meetingId,
       memberId: member.id,
       date: new Date(),
       mood,
       winsPains,
       radar,
       actions: [...actions, ...previousActions.filter(a => !a.completed)],
+      leadComment: leadComment.trim() || undefined,
       duration: Math.floor(elapsed / 60),
     };
+
+    // Mark pending notes as used
+    if (pendingNoteIds.length > 0) {
+      try {
+        await markNotesAsUsed(pendingNoteIds, meetingId);
+      } catch (error) {
+        console.error('Error marking notes as used:', error);
+      }
+    }
+
     onSaveMeeting(meeting);
-    navigate('/');
+    navigate('/admin');
   };
 
   const renderStepContent = () => {
@@ -111,7 +152,7 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
         return (
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-800 mb-6">
-              💭 Pulse Check
+              💭 Comment ça va ?
             </h2>
             <MoodSlider value={mood} onChange={setMood} />
           </div>
@@ -123,7 +164,30 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
             <h2 className="text-xl font-semibold text-gray-800 mb-6">
               🎯 Réussites & Difficultés
             </h2>
+            {pendingNoteIds.length > 0 && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-700">
+                <BookOpen className="w-4 h-4" />
+                <span>
+                  {pendingNoteIds.length} note{pendingNoteIds.length > 1 ? 's' : ''} pré-chargée{pendingNoteIds.length > 1 ? 's' : ''} depuis le carnet de {member.name}
+                </span>
+              </div>
+            )}
             <WinsPains items={winsPains} onChange={setWinsPains} />
+
+            {/* Commentaire privé du lead */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <span className="bg-purple-100 text-purple-700 text-xs px-2 py-0.5 rounded-full">Lead uniquement</span>
+                Commentaire lead
+              </label>
+              <textarea
+                value={leadComment}
+                onChange={(e) => setLeadComment(e.target.value)}
+                placeholder="Notes personnelles sur cet échange (non visible par le collaborateur)..."
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none bg-purple-50/50"
+                rows={3}
+              />
+            </div>
           </div>
         );
 
@@ -175,7 +239,7 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
               <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <div className="text-3xl mb-1">⚡</div>
                 <div className="text-2xl font-bold text-indigo-600">{mood.energy}/10</div>
-                <div className="text-xs text-gray-500">Énergie</div>
+                <div className="text-xs text-gray-500">Motivation</div>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-3xl mb-1">🎉</div>

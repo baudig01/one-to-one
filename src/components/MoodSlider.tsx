@@ -7,7 +7,7 @@ interface MoodSliderProps {
 }
 
 const MOOD_EMOJIS = ['😫', '😔', '😐', '🙂', '😄'];
-const ENERGY_EMOJIS = ['🔋', '🪫'];
+const MOTIVATION_EMOJIS = ['😩', '💪'];
 
 function getMoodEmoji(value: number): string {
   const index = Math.floor((value - 1) / 2.5);
@@ -22,11 +22,11 @@ function getMoodLabel(value: number): string {
   return 'Top !';
 }
 
-function getEnergyLabel(value: number): string {
-  if (value <= 3) return 'Épuisé';
-  if (value <= 5) return 'Fatigué';
-  if (value <= 7) return 'Normal';
-  return 'Plein d\'énergie';
+function getMotivationLabel(value: number): string {
+  if (value <= 3) return 'Démotivé';
+  if (value <= 5) return 'Bof';
+  if (value <= 7) return 'Motivé';
+  return 'Très motivé !';
 }
 
 export function MoodSlider({ value, onChange }: MoodSliderProps) {
@@ -85,14 +85,14 @@ export function MoodSlider({ value, onChange }: MoodSliderProps) {
         </div>
       </div>
 
-      {/* Energy Slider */}
+      {/* Motivation Slider */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-gray-700">
-            Niveau d'énergie ?
+            Niveau de motivation ?
           </label>
           <span className="text-2xl">
-            {value.energy > 5 ? '⚡' : '🪫'}
+            {value.energy > 5 ? '💪' : '😩'}
           </span>
         </div>
 
@@ -113,14 +113,14 @@ export function MoodSlider({ value, onChange }: MoodSliderProps) {
                        [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-grab"
           />
           <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <span>🪫 Vide</span>
-            <span>⚡ Plein</span>
+            <span>😩 Pas motivé</span>
+            <span>💪 À fond !</span>
           </div>
         </div>
 
         <div className="text-center">
           <span className="inline-block px-4 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
-            {value.energy}/10 - {getEnergyLabel(value.energy)}
+            {value.energy}/10 - {getMotivationLabel(value.energy)}
           </span>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { DashboardPage, MeetingPage } from './pages';
+import { DashboardPage, MeetingPage, MySpacePage } from './pages';
 import { ProtectedRoute } from './components';
 import { useData } from './hooks/useData';
 import { Loader2, Database, HardDrive } from 'lucide-react';
@@ -8,12 +8,14 @@ function App() {
   const {
     members,
     meetings,
+    requests,
     loading,
     error,
     addMember,
     updateMember,
     deleteMember,
     addMeeting,
+    resolveRequest,
     isFirebaseConfigured,
   } = useData();
 
@@ -87,9 +89,11 @@ function App() {
               <DashboardPage
                 members={members}
                 meetings={meetings}
+                requests={requests}
                 onAddMember={addMember}
                 onDeleteMember={deleteMember}
                 onEditMember={updateMember}
+                onResolveRequest={resolveRequest}
                 isAdmin={true}
               />
             </ProtectedRoute>
@@ -107,6 +111,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Espace membre */}
+        <Route path="/my-space" element={<MySpacePage />} />
       </Routes>
     </BrowserRouter>
   );

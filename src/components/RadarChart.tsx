@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import {
   Chart as ChartJS,
   RadialLinearScale,
@@ -19,7 +18,7 @@ interface RadarChartProps {
   previousData?: RadarData;
 }
 
-const RADAR_KEYS: (keyof RadarData)[] = ['codeQuality', 'process', 'teamwork', 'workload', 'growth'];
+const RADAR_KEYS: (keyof RadarData)[] = ['process', 'ambiance', 'work'];
 
 export function RadarChart({ data, onChange, previousData }: RadarChartProps) {
   const chartData = {

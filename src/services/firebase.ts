@@ -11,7 +11,17 @@ import {
   orderBy,
   Timestamp,
 } from 'firebase/firestore';
-import type { TeamMember, Meeting } from '../types';
+import type { TeamMember, Meeting, MemberNote, OneToOneRequest } from '../types';
+
+// Génère un code d'accès simple (6 caractères)
+const generateAccessCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sans I, O, 0, 1 pour éviter confusion
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
 
 // Configuration Firebase - À REMPLACER avec tes propres valeurs
 // Tu peux créer un projet Firebase gratuit sur https://console.firebase.google.com
@@ -47,24 +57,54 @@ if (isFirebaseConfigured()) {
 export const fetchMembers = async (): Promise<TeamMember[]> => {
   if (!db) {
     const stored = localStorage.getItem('one-to-one-members');
-    return stored ? JSON.parse(stored) : [];
+    const members: TeamMember[] = stored ? JSON.parse(stored) : [];
+
+    // Migration: générer un code pour les membres qui n'en ont pas
+    let needsUpdate = false;
+    const updatedMembers = members.map(m => {
+      if (!m.accessCode) {
+        needsUpdate = true;
+        return { ...m, accessCode: generateAccessCode() };
+      }
+      return m;
+    });
+
+    if (needsUpdate) {
+      localStorage.setItem('one-to-one-members', JSON.stringify(updatedMembers));
+    }
+
+    return updatedMembers;
   }
 
   const membersRef = collection(db, 'members');
   const q = query(membersRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map(doc => ({
+  const members = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data(),
     createdAt: doc.data().createdAt?.toDate() || new Date(),
   })) as TeamMember[];
+
+  // Migration Firebase: générer un code pour les membres qui n'en ont pas
+  for (const member of members) {
+    if (!member.accessCode) {
+      const newCode = generateAccessCode();
+      const memberRef = doc(db, 'members', member.id);
+      await updateDoc(memberRef, { accessCode: newCode });
+      member.accessCode = newCode;
+    }
+  }
+
+  return members;
 };
 
-export const addMember = async (member: Omit<TeamMember, 'id' | 'createdAt'>): Promise<TeamMember> => {
+export const addMember = async (member: Omit<TeamMember, 'id' | 'createdAt' | 'accessCode'>): Promise<TeamMember> => {
+  const accessCode = generateAccessCode();
   const newMember: TeamMember = {
     ...member,
     id: crypto.randomUUID(),
+    accessCode,
     createdAt: new Date(),
   };
 
@@ -77,6 +117,7 @@ export const addMember = async (member: Omit<TeamMember, 'id' | 'createdAt'>): P
 
   const docRef = await addDoc(collection(db, 'members'), {
     ...member,
+    accessCode,
     createdAt: Timestamp.now(),
   });
 
@@ -177,4 +218,151 @@ export const updateMeeting = async (meeting: Meeting): Promise<void> => {
     notes: meeting.notes,
     duration: meeting.duration,
   });
+};
+
+// ============ MEMBER NOTES (Carnet de bord) ============
+
+export const fetchNotes = async (): Promise<MemberNote[]> => {
+  if (!db) {
+    const stored = localStorage.getItem('one-to-one-notes');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  const notesRef = collection(db, 'notes');
+  const q = query(notesRef, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+  })) as MemberNote[];
+};
+
+export const fetchNotesByMember = async (memberId: string): Promise<MemberNote[]> => {
+  const allNotes = await fetchNotes();
+  return allNotes.filter(n => n.memberId === memberId);
+};
+
+export const fetchPendingNotes = async (memberId: string): Promise<MemberNote[]> => {
+  const notes = await fetchNotesByMember(memberId);
+  return notes.filter(n => !n.usedInMeetingId);
+};
+
+export const addNote = async (note: Omit<MemberNote, 'id' | 'createdAt'>): Promise<MemberNote> => {
+  const newNote: MemberNote = {
+    ...note,
+    id: crypto.randomUUID(),
+    createdAt: new Date(),
+  };
+
+  if (!db) {
+    const notes = await fetchNotes();
+    const updated = [newNote, ...notes];
+    localStorage.setItem('one-to-one-notes', JSON.stringify(updated));
+    return newNote;
+  }
+
+  const docRef = await addDoc(collection(db, 'notes'), {
+    ...note,
+    createdAt: Timestamp.now(),
+  });
+
+  return { ...newNote, id: docRef.id };
+};
+
+export const markNotesAsUsed = async (noteIds: string[], meetingId: string): Promise<void> => {
+  if (!db) {
+    const notes = await fetchNotes();
+    const updated = notes.map(n =>
+      noteIds.includes(n.id) ? { ...n, usedInMeetingId: meetingId } : n
+    );
+    localStorage.setItem('one-to-one-notes', JSON.stringify(updated));
+    return;
+  }
+
+  // En Firebase, on met à jour chaque note
+  for (const noteId of noteIds) {
+    const noteRef = doc(db, 'notes', noteId);
+    await updateDoc(noteRef, { usedInMeetingId: meetingId });
+  }
+};
+
+export const deleteNote = async (noteId: string): Promise<void> => {
+  if (!db) {
+    const notes = await fetchNotes();
+    const updated = notes.filter(n => n.id !== noteId);
+    localStorage.setItem('one-to-one-notes', JSON.stringify(updated));
+    return;
+  }
+
+  await deleteDoc(doc(db, 'notes', noteId));
+};
+
+// ============ ONE-TO-ONE REQUESTS ============
+
+export const fetchRequests = async (): Promise<OneToOneRequest[]> => {
+  if (!db) {
+    const stored = localStorage.getItem('one-to-one-requests');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  const requestsRef = collection(db, 'requests');
+  const q = query(requestsRef, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: doc.data().createdAt?.toDate() || new Date(),
+    resolvedAt: doc.data().resolvedAt?.toDate() || undefined,
+  })) as OneToOneRequest[];
+};
+
+export const fetchPendingRequests = async (): Promise<OneToOneRequest[]> => {
+  const requests = await fetchRequests();
+  return requests.filter(r => !r.resolvedAt);
+};
+
+export const addRequest = async (request: Omit<OneToOneRequest, 'id' | 'createdAt'>): Promise<OneToOneRequest> => {
+  const newRequest: OneToOneRequest = {
+    ...request,
+    id: crypto.randomUUID(),
+    createdAt: new Date(),
+  };
+
+  if (!db) {
+    const requests = await fetchRequests();
+    const updated = [newRequest, ...requests];
+    localStorage.setItem('one-to-one-requests', JSON.stringify(updated));
+    return newRequest;
+  }
+
+  const docRef = await addDoc(collection(db, 'requests'), {
+    ...request,
+    createdAt: Timestamp.now(),
+  });
+
+  return { ...newRequest, id: docRef.id };
+};
+
+export const resolveRequest = async (requestId: string): Promise<void> => {
+  if (!db) {
+    const requests = await fetchRequests();
+    const updated = requests.map(r =>
+      r.id === requestId ? { ...r, resolvedAt: new Date() } : r
+    );
+    localStorage.setItem('one-to-one-requests', JSON.stringify(updated));
+    return;
+  }
+
+  const requestRef = doc(db, 'requests', requestId);
+  await updateDoc(requestRef, { resolvedAt: Timestamp.now() });
+};
+
+// ============ MEMBER BY ACCESS CODE ============
+
+export const getMemberByAccessCode = async (code: string): Promise<TeamMember | null> => {
+  const members = await fetchMembers();
+  return members.find(m => m.accessCode === code) || null;
 };

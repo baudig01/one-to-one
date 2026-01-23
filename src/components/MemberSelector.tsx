@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Edit2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, X, KeyRound, Copy } from 'lucide-react';
 import type { TeamMember } from '../types';
 
 interface MemberSelectorProps {
@@ -119,6 +119,20 @@ export function MemberSelector({
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 truncate">{member.name}</p>
                     <p className="text-sm text-gray-500 truncate">{member.role}</p>
+                    {isAdmin && member.accessCode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(member.accessCode);
+                        }}
+                        className="flex items-center gap-1 mt-1 text-xs text-primary-600 hover:text-primary-800"
+                        title="Cliquer pour copier"
+                      >
+                        <KeyRound className="w-3 h-3" />
+                        <span className="font-mono">{member.accessCode}</span>
+                        <Copy className="w-3 h-3 opacity-50" />
+                      </button>
+                    )}
                   </div>
                 </div>
 

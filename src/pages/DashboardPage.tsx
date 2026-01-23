@@ -2,27 +2,31 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown, ChevronUp, Eye, Shield } from 'lucide-react';
+import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown, ChevronUp, Eye, Shield, Bell, CheckCircle, AlertTriangle, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MemberSelector, AdminCodeModal } from '../components';
-import type { TeamMember, Meeting } from '../types';
+import type { TeamMember, Meeting, OneToOneRequest } from '../types';
 import { RADAR_LABELS, WIN_PAIN_CONFIG } from '../types';
 
 interface DashboardPageProps {
   members: TeamMember[];
   meetings: Meeting[];
+  requests?: OneToOneRequest[];
   onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
   onDeleteMember?: (memberId: string) => void;
   onEditMember?: (member: TeamMember) => void;
+  onResolveRequest?: (requestId: string) => void;
   isAdmin?: boolean;
 }
 
 export function DashboardPage({
   members,
   meetings,
+  requests = [],
   onAddMember,
   onDeleteMember,
   onEditMember,
+  onResolveRequest,
   isAdmin = false,
 }: DashboardPageProps) {
   const navigate = useNavigate();
@@ -86,13 +90,22 @@ export function DashboardPage({
                   Passer en mode Lecture
                 </Link>
               ) : (
-                <button
-                  onClick={() => setShowAdminModal(true)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
-                >
-                  <Shield className="w-3.5 h-3.5" />
-                  Passer en mode Admin
-                </button>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/my-space"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    Mon Espace
+                  </Link>
+                  <button
+                    onClick={() => setShowAdminModal(true)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    Mode Admin
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -268,6 +281,19 @@ export function DashboardPage({
                                 </p>
                               </div>
                             )}
+
+                            {/* Commentaire lead - Admin only */}
+                            {isAdmin && meeting.leadComment && (
+                              <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                <h4 className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-2">
+                                  <span className="bg-purple-200 text-purple-800 text-xs px-2 py-0.5 rounded-full">Lead</span>
+                                  Commentaire privé
+                                </h4>
+                                <p className="text-sm text-purple-800 whitespace-pre-wrap">
+                                  {meeting.leadComment}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -333,6 +359,80 @@ export function DashboardPage({
                 </div>
               )}
             </div>
+
+            {/* Pending Requests - Admin only */}
+            {isAdmin && requests.length > 0 && (
+              <div className="card border-orange-200 bg-orange-50">
+                <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
+                  <Bell className="w-5 h-5" />
+                  Demandes en attente
+                  <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {requests.length}
+                  </span>
+                </h3>
+
+                <div className="space-y-3">
+                  {requests.map((request) => {
+                    const member = members.find(m => m.id === request.memberId);
+                    const urgencyConfig = {
+                      low: { label: 'Pas urgent', color: 'bg-green-100 text-green-700', icon: null },
+                      medium: { label: 'Normal', color: 'bg-yellow-100 text-yellow-700', icon: null },
+                      high: { label: 'Urgent', color: 'bg-red-100 text-red-700', icon: AlertTriangle },
+                    };
+                    const config = urgencyConfig[request.urgency];
+                    const UrgencyIcon = config.icon;
+
+                    return (
+                      <div
+                        key={request.id}
+                        className="bg-white rounded-lg p-3 border border-orange-200"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-gray-900">
+                                {member?.name || 'Membre inconnu'}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${config.color}`}>
+                                {UrgencyIcon && <UrgencyIcon className="w-3 h-3" />}
+                                {config.label}
+                              </span>
+                            </div>
+                            {request.reason && (
+                              <p className="text-sm text-gray-600 mb-2">
+                                "{request.reason}"
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-400">
+                              {format(new Date(request.createdAt), 'dd MMM à HH:mm', { locale: fr })}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setSelectedMemberId(request.memberId);
+                                navigate(`/meeting/${request.memberId}`);
+                              }}
+                              className="btn-primary text-xs px-3 py-1.5"
+                            >
+                              <Play className="w-3 h-3 mr-1" />
+                              Démarrer
+                            </button>
+                            <button
+                              onClick={() => onResolveRequest?.(request.id)}
+                              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="Marquer comme traité"
+                            >
+                              <CheckCircle className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Tips */}
             <div className="card bg-gradient-to-br from-primary-50 to-indigo-50 border-primary-100">

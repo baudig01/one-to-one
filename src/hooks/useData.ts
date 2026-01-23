@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { TeamMember, Meeting } from '../types';
+import type { TeamMember, Meeting, OneToOneRequest } from '../types';
 import {
   fetchMembers,
   fetchMeetings,
@@ -7,12 +7,15 @@ import {
   updateMember as updateMemberService,
   deleteMember as deleteMemberService,
   addMeeting as addMeetingService,
+  fetchPendingRequests,
+  resolveRequest as resolveRequestService,
   isFirebaseConfigured,
 } from '../services/firebase';
 
 export function useData() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [requests, setRequests] = useState<OneToOneRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -21,12 +24,14 @@ export function useData() {
     const loadData = async () => {
       try {
         setLoading(true);
-        const [membersData, meetingsData] = await Promise.all([
+        const [membersData, meetingsData, requestsData] = await Promise.all([
           fetchMembers(),
           fetchMeetings(),
+          fetchPendingRequests(),
         ]);
         setMembers(membersData);
         setMeetings(meetingsData);
+        setRequests(requestsData);
         setError(null);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -83,15 +88,28 @@ export function useData() {
     }
   }, []);
 
+  // Request operations
+  const resolveRequest = useCallback(async (requestId: string) => {
+    try {
+      await resolveRequestService(requestId);
+      setRequests(prev => prev.filter(r => r.id !== requestId));
+    } catch (err) {
+      console.error('Error resolving request:', err);
+      throw err;
+    }
+  }, []);
+
   return {
     members,
     meetings,
+    requests,
     loading,
     error,
     addMember,
     updateMember,
     deleteMember,
     addMeeting,
+    resolveRequest,
     isFirebaseConfigured: isFirebaseConfigured(),
   };
 }
