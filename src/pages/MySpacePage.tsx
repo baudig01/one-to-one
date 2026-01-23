@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+deimport { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -22,6 +22,7 @@ import {
   fetchRequests,
   addRequest
 } from '../services/firebase';
+import { sendOneToOneRequestNotification } from '../services/email';
 
 type NoteType = 'win' | 'pain' | 'idea' | 'blocker';
 
@@ -126,6 +127,14 @@ export function MySpacePage() {
       setShowRequestForm(false);
       setRequestReason('');
       setRequestUrgency('medium');
+
+      // Envoyer notification email au lead
+      sendOneToOneRequestNotification({
+        memberName: member.name,
+        memberRole: member.role,
+        reason: requestReason.trim() || undefined,
+        urgency: requestUrgency,
+      });
     } catch (error) {
       console.error('Error creating request:', error);
     }
