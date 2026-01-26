@@ -164,8 +164,8 @@ export const fetchMeetings = async (): Promise<Meeting[]> => {
   const snapshot = await getDocs(q);
 
   return snapshot.docs.map(doc => ({
-    id: doc.id,
     ...doc.data(),
+    id: doc.id,
     date: doc.data().date?.toDate() || new Date(),
     actions: (doc.data().actions || []).map((a: any) => ({
       ...a,
