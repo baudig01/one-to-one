@@ -23,6 +23,7 @@ interface MeetingPageProps {
   members: TeamMember[];
   meetings: Meeting[];
   onSaveMeeting: (meeting: Meeting) => void;
+  onUpdateMeeting?: (meeting: Meeting) => void;
 }
 
 const DEFAULT_MOOD: MoodEntry = { mood: 5, energy: 5 };
@@ -34,9 +35,11 @@ const DEFAULT_RADAR: RadarData = {
 
 const STEPS: MeetingStep[] = ['pulse', 'wins-pains', 'radar', 'actions', 'summary'];
 
-export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPageProps) {
-  const { memberId } = useParams();
+export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting }: MeetingPageProps) {
+  const { memberId, meetingId } = useParams();
   const navigate = useNavigate();
+  const isEditMode = !!meetingId;
+  const existingMeeting = isEditMode ? meetings.find(m => m.id === meetingId) : undefined;
 
   const member = members.find(m => m.id === memberId);
   const previousMeeting = meetings
@@ -44,18 +47,18 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
   const [currentStep, setCurrentStep] = useState<MeetingStep>('pulse');
-  const [mood, setMood] = useState<MoodEntry>(DEFAULT_MOOD);
-  const [winsPains, setWinsPains] = useState<WinPainItem[]>([]);
-  const [radar, setRadar] = useState<RadarData>(DEFAULT_RADAR);
-  const [actions, setActions] = useState<ActionItem[]>([]);
+  const [mood, setMood] = useState<MoodEntry>(existingMeeting?.mood || DEFAULT_MOOD);
+  const [winsPains, setWinsPains] = useState<WinPainItem[]>(existingMeeting?.winsPains || []);
+  const [radar, setRadar] = useState<RadarData>(existingMeeting?.radar || DEFAULT_RADAR);
+  const [actions, setActions] = useState<ActionItem[]>(existingMeeting?.actions || []);
   const [previousActions, setPreviousActions] = useState<ActionItem[]>(
-    previousMeeting?.actions || []
+    isEditMode ? [] : (previousMeeting?.actions || [])
   );
   const [startTime] = useState(Date.now());
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(existingMeeting?.duration ? existingMeeting.duration * 60 : 0);
   const [pendingNoteIds, setPendingNoteIds] = useState<string[]>([]);
-  const [notesLoaded, setNotesLoaded] = useState(false);
-  const [leadComment, setLeadComment] = useState('');
+  const [notesLoaded, setNotesLoaded] = useState(isEditMode);
+  const [leadComment, setLeadComment] = useState(existingMeeting?.leadComment || '');
 
   useEffect(() => {
     if (!member) {
@@ -120,29 +123,33 @@ export function MeetingPage({ members, meetings, onSaveMeeting }: MeetingPagePro
   };
 
   const handleSave = async () => {
-    const meetingId = crypto.randomUUID();
+    const newMeetingId = isEditMode ? meetingId! : crypto.randomUUID();
     const meeting: Meeting = {
-      id: meetingId,
+      id: newMeetingId,
       memberId: member.id,
-      date: new Date(),
+      date: existingMeeting?.date || new Date(),
       mood,
       winsPains,
       radar,
-      actions: [...actions, ...previousActions.filter(a => !a.completed)],
+      actions: isEditMode ? actions : [...actions, ...previousActions.filter(a => !a.completed)],
       leadComment: leadComment.trim() || undefined,
       duration: Math.floor(elapsed / 60),
     };
 
-    // Mark pending notes as used
-    if (pendingNoteIds.length > 0) {
+    // Mark pending notes as used (only for new meetings)
+    if (!isEditMode && pendingNoteIds.length > 0) {
       try {
-        await markNotesAsUsed(pendingNoteIds, meetingId);
+        await markNotesAsUsed(pendingNoteIds, newMeetingId);
       } catch (error) {
         console.error('Error marking notes as used:', error);
       }
     }
 
-    onSaveMeeting(meeting);
+    if (isEditMode && onUpdateMeeting) {
+      onUpdateMeeting(meeting);
+    } else {
+      onSaveMeeting(meeting);
+    }
     navigate('/admin');
   };
 

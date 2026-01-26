@@ -25,6 +25,7 @@ export interface OneToOneRequest {
   urgency: 'low' | 'medium' | 'high';
   createdAt: Date;
   resolvedAt?: Date;
+  scheduledAt?: Date; // Date/heure planifiée par le lead
 }
 
 export interface MoodEntry {

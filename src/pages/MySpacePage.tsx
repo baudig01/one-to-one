@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
@@ -20,18 +21,21 @@ import {
   addNote,
   deleteNote,
   fetchRequests,
-  addRequest
+  addRequest,
+  cancelRequest
 } from '../services/firebase';
 import { sendOneToOneRequestNotification } from '../services/email';
 
 type NoteType = 'win' | 'pain' | 'idea' | 'blocker';
 
 export function MySpacePage() {
+  const navigate = useNavigate();
   const [accessCode, setAccessCode] = useState('');
   const [codeError, setCodeError] = useState('');
   const [member, setMember] = useState<TeamMember | null>(null);
   const [notes, setNotes] = useState<MemberNote[]>([]);
   const [pendingRequest, setPendingRequest] = useState<OneToOneRequest | null>(null);
+  const [acceptedRequest, setAcceptedRequest] = useState<OneToOneRequest | null>(null);
   const [loading, setLoading] = useState(false);
 
   // Form state for new note
@@ -65,12 +69,21 @@ export function MySpacePage() {
         const memberNotes = await fetchNotesByMember(foundMember.id);
         setNotes(memberNotes.filter(n => !n.usedInMeetingId));
 
-        // Check for pending request
+        // Check for pending or accepted request
         const allRequests = await fetchRequests();
         const pending = allRequests.find(
           r => r.memberId === foundMember.id && !r.resolvedAt
         );
         setPendingRequest(pending || null);
+
+        // Check for recently accepted request (with scheduled date in the future)
+        const accepted = allRequests.find(
+          r => r.memberId === foundMember.id &&
+               r.resolvedAt &&
+               r.scheduledAt &&
+               new Date(r.scheduledAt) > new Date()
+        );
+        setAcceptedRequest(accepted || null);
       } else {
         setCodeError('Code invalide. Vérifie auprès de ton lead.');
       }
@@ -86,7 +99,9 @@ export function MySpacePage() {
     setAccessCode('');
     setNotes([]);
     setPendingRequest(null);
+    setAcceptedRequest(null);
     sessionStorage.removeItem('memberAccessCode');
+    navigate('/');
   };
 
   const handleAddNote = async () => {
@@ -137,6 +152,17 @@ export function MySpacePage() {
       });
     } catch (error) {
       console.error('Error creating request:', error);
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!pendingRequest) return;
+
+    try {
+      await cancelRequest(pendingRequest.id);
+      setPendingRequest(null);
+    } catch (error) {
+      console.error('Error canceling request:', error);
     }
   };
 
@@ -236,11 +262,25 @@ export function MySpacePage() {
             </h2>
           </div>
 
-          {pendingRequest ? (
+          {acceptedRequest ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-green-800">
+                    One-to-One planifié !
+                  </p>
+                  <p className="text-sm text-green-600 mt-1">
+                    {format(new Date(acceptedRequest.scheduledAt!), "EEEE dd MMMM 'à' HH:mm", { locale: fr })}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : pendingRequest ? (
             <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <Clock className="w-5 h-5 text-primary-600 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <p className="font-medium text-primary-800">
                     Demande en attente
                   </p>
@@ -252,10 +292,19 @@ export function MySpacePage() {
                       "{pendingRequest.reason}"
                     </p>
                   )}
-                  <span className={`inline-block mt-2 text-xs px-2 py-1 rounded-full ${urgencyConfig[pendingRequest.urgency].color}`}>
-                    {urgencyConfig[pendingRequest.urgency].label}
-                  </span>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={`text-xs px-2 py-1 rounded-full ${urgencyConfig[pendingRequest.urgency].color}`}>
+                      {urgencyConfig[pendingRequest.urgency].label}
+                    </span>
+                  </div>
                 </div>
+                <button
+                  onClick={handleCancelRequest}
+                  className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
+                  title="Annuler la demande"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ) : showRequestForm ? (

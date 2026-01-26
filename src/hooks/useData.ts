@@ -7,6 +7,8 @@ import {
   updateMember as updateMemberService,
   deleteMember as deleteMemberService,
   addMeeting as addMeetingService,
+  updateMeeting as updateMeetingService,
+  deleteMeeting as deleteMeetingService,
   fetchPendingRequests,
   resolveRequest as resolveRequestService,
   isFirebaseConfigured,
@@ -88,10 +90,30 @@ export function useData() {
     }
   }, []);
 
-  // Request operations
-  const resolveRequest = useCallback(async (requestId: string) => {
+  const updateMeeting = useCallback(async (meeting: Meeting) => {
     try {
-      await resolveRequestService(requestId);
+      await updateMeetingService(meeting);
+      setMeetings(prev => prev.map(m => m.id === meeting.id ? meeting : m));
+    } catch (err) {
+      console.error('Error updating meeting:', err);
+      throw err;
+    }
+  }, []);
+
+  const deleteMeeting = useCallback(async (meetingId: string) => {
+    try {
+      await deleteMeetingService(meetingId);
+      setMeetings(prev => prev.filter(m => m.id !== meetingId));
+    } catch (err) {
+      console.error('Error deleting meeting:', err);
+      throw err;
+    }
+  }, []);
+
+  // Request operations
+  const resolveRequest = useCallback(async (requestId: string, scheduledAt?: Date) => {
+    try {
+      await resolveRequestService(requestId, scheduledAt);
       setRequests(prev => prev.filter(r => r.id !== requestId));
     } catch (err) {
       console.error('Error resolving request:', err);
@@ -109,6 +131,8 @@ export function useData() {
     updateMember,
     deleteMember,
     addMeeting,
+    updateMeeting,
+    deleteMeeting,
     resolveRequest,
     isFirebaseConfigured: isFirebaseConfigured(),
   };

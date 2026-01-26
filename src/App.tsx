@@ -15,6 +15,8 @@ function App() {
     updateMember,
     deleteMember,
     addMeeting,
+    updateMeeting,
+    deleteMeeting,
     resolveRequest,
     isFirebaseConfigured,
   } = useData();
@@ -93,6 +95,7 @@ function App() {
                 onAddMember={addMember}
                 onDeleteMember={deleteMember}
                 onEditMember={updateMember}
+                onDeleteMeeting={deleteMeeting}
                 onResolveRequest={resolveRequest}
                 isAdmin={true}
               />
@@ -107,6 +110,20 @@ function App() {
                 members={members}
                 meetings={meetings}
                 onSaveMeeting={addMeeting}
+                onUpdateMeeting={updateMeeting}
+              />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/meeting/:memberId/edit/:meetingId"
+          element={
+            <ProtectedRoute>
+              <MeetingPage
+                members={members}
+                meetings={meetings}
+                onSaveMeeting={addMeeting}
+                onUpdateMeeting={updateMeeting}
               />
             </ProtectedRoute>
           }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown, ChevronUp, Eye, Shield, Bell, CheckCircle, AlertTriangle, BookOpen } from 'lucide-react';
+import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown, ChevronUp, Eye, Shield, Bell, CheckCircle, AlertTriangle, BookOpen, Trash2, Pencil } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MemberSelector, AdminCodeModal } from '../components';
 import type { TeamMember, Meeting, OneToOneRequest } from '../types';
@@ -15,7 +15,8 @@ interface DashboardPageProps {
   onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
   onDeleteMember?: (memberId: string) => void;
   onEditMember?: (member: TeamMember) => void;
-  onResolveRequest?: (requestId: string) => void;
+  onDeleteMeeting?: (meetingId: string) => void;
+  onResolveRequest?: (requestId: string, scheduledAt?: Date) => void;
   isAdmin?: boolean;
 }
 
@@ -26,6 +27,7 @@ export function DashboardPage({
   onAddMember,
   onDeleteMember,
   onEditMember,
+  onDeleteMeeting,
   onResolveRequest,
   isAdmin = false,
 }: DashboardPageProps) {
@@ -33,6 +35,10 @@ export function DashboardPage({
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [expandedMeetingId, setExpandedMeetingId] = useState<string | null>(null);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [schedulingRequestId, setSchedulingRequestId] = useState<string | null>(null);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [deletingMeetingId, setDeletingMeetingId] = useState<string | null>(null);
 
   const getMemberMeetings = (memberId: string) => {
     return meetings
@@ -63,6 +69,15 @@ export function DashboardPage({
     }
   };
 
+  const handleScheduleRequest = (requestId: string) => {
+    if (!scheduledDate || !scheduledTime) return;
+    const dateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+    onResolveRequest?.(requestId, dateTime);
+    setSchedulingRequestId(null);
+    setScheduledDate('');
+    setScheduledTime('');
+  };
+
   const selectedMember = members.find(m => m.id === selectedMemberId);
   const selectedMemberMeetings = selectedMemberId ? getMemberMeetings(selectedMemberId) : [];
 
@@ -70,40 +85,46 @@ export function DashboardPage({
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">One-to-One</h1>
-              <p className="text-gray-500">Format 15-20 min</p>
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">One-to-One</h1>
+                <p className="text-sm text-gray-500">Format 15-20 min</p>
+              </div>
+              <div className="text-right text-xs sm:text-sm text-gray-500 sm:hidden">
+                <p>{members.length} membre(s)</p>
+                <p>{meetings.length} meeting(s)</p>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right text-sm text-gray-500">
+            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
+              <div className="hidden sm:block text-right text-sm text-gray-500">
                 <p>{members.length} membre(s)</p>
                 <p>{meetings.length} meeting(s)</p>
               </div>
               {isAdmin ? (
                 <Link
                   to="/"
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
                 >
                   <Eye className="w-3.5 h-3.5" />
-                  Passer en mode Lecture
+                  <span className="hidden sm:inline">Passer en</span> mode Lecture
                 </Link>
               ) : (
                 <div className="flex items-center gap-2">
                   <Link
                     to="/my-space"
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
+                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
                   >
                     <BookOpen className="w-3.5 h-3.5" />
-                    Mon Espace
+                    <span className="hidden sm:inline">Mon</span> Espace
                   </Link>
                   <button
                     onClick={() => setShowAdminModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
                   >
                     <Shield className="w-3.5 h-3.5" />
-                    Mode Admin
+                    <span className="hidden sm:inline">Mode</span> Admin
                   </button>
                 </div>
               )}
@@ -294,6 +315,63 @@ export function DashboardPage({
                                 </p>
                               </div>
                             )}
+
+                            {/* Actions Admin */}
+                            {isAdmin && (
+                              <div className="pt-3 mt-3 border-t border-gray-200">
+                                {deletingMeetingId === meeting.id ? (
+                                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                                    <p className="text-sm text-red-800 mb-3">
+                                      Supprimer ce one-to-one du {format(new Date(meeting.date), 'dd MMMM yyyy', { locale: fr })} ?
+                                    </p>
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeletingMeetingId(null);
+                                        }}
+                                        className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                      >
+                                        Annuler
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onDeleteMeeting?.(meeting.id);
+                                          setDeletingMeetingId(null);
+                                        }}
+                                        className="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                                      >
+                                        Confirmer la suppression
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigate(`/meeting/${meeting.memberId}/edit/${meeting.id}`);
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                      Modifier
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeletingMeetingId(meeting.id);
+                                      }}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                      Supprimer
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -381,6 +459,7 @@ export function DashboardPage({
                     };
                     const config = urgencyConfig[request.urgency];
                     const UrgencyIcon = config.icon;
+                    const isScheduling = schedulingRequestId === request.id;
 
                     return (
                       <div
@@ -419,14 +498,49 @@ export function DashboardPage({
                               Démarrer
                             </button>
                             <button
-                              onClick={() => onResolveRequest?.(request.id)}
+                              onClick={() => setSchedulingRequestId(isScheduling ? null : request.id)}
                               className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-                              title="Marquer comme traité"
+                              title="Planifier le one-to-one"
                             >
                               <CheckCircle className="w-5 h-5" />
                             </button>
                           </div>
                         </div>
+
+                        {/* Formulaire de planification */}
+                        {isScheduling && (
+                          <div className="mt-3 pt-3 border-t border-orange-100">
+                            <p className="text-sm font-medium text-gray-700 mb-2">
+                              Planifier le one-to-one :
+                            </p>
+                            <div className="flex gap-2 mb-3">
+                              <div className="flex-1">
+                                <input
+                                  type="date"
+                                  value={scheduledDate}
+                                  onChange={(e) => setScheduledDate(e.target.value)}
+                                  className="input-field text-sm"
+                                  min={new Date().toISOString().split('T')[0]}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <input
+                                  type="time"
+                                  value={scheduledTime}
+                                  onChange={(e) => setScheduledTime(e.target.value)}
+                                  className="input-field text-sm"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleScheduleRequest(request.id)}
+                              disabled={!scheduledDate || !scheduledTime}
+                              className="w-full btn-primary text-sm py-2 disabled:opacity-50"
+                            >
+                              Confirmer
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

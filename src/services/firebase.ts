@@ -220,6 +220,17 @@ export const updateMeeting = async (meeting: Meeting): Promise<void> => {
   });
 };
 
+export const deleteMeeting = async (meetingId: string): Promise<void> => {
+  if (!db) {
+    const meetings = await fetchMeetings();
+    const updated = meetings.filter(m => m.id !== meetingId);
+    localStorage.setItem('one-to-one-meetings', JSON.stringify(updated));
+    return;
+  }
+
+  await deleteDoc(doc(db, 'meetings', meetingId));
+};
+
 // ============ MEMBER NOTES (Carnet de bord) ============
 
 export const fetchNotes = async (): Promise<MemberNote[]> => {
@@ -316,6 +327,7 @@ export const fetchRequests = async (): Promise<OneToOneRequest[]> => {
     ...doc.data(),
     createdAt: doc.data().createdAt?.toDate() || new Date(),
     resolvedAt: doc.data().resolvedAt?.toDate() || undefined,
+    scheduledAt: doc.data().scheduledAt?.toDate() || undefined,
   })) as OneToOneRequest[];
 };
 
@@ -338,26 +350,48 @@ export const addRequest = async (request: Omit<OneToOneRequest, 'id' | 'createdA
     return newRequest;
   }
 
-  const docRef = await addDoc(collection(db, 'requests'), {
-    ...request,
+  // Filtrer les valeurs undefined (Firebase ne les accepte pas)
+  const requestData: Record<string, any> = {
+    memberId: request.memberId,
+    urgency: request.urgency,
     createdAt: Timestamp.now(),
-  });
+  };
+  if (request.reason) {
+    requestData.reason = request.reason;
+  }
+
+  const docRef = await addDoc(collection(db, 'requests'), requestData);
 
   return { ...newRequest, id: docRef.id };
 };
 
-export const resolveRequest = async (requestId: string): Promise<void> => {
+export const resolveRequest = async (requestId: string, scheduledAt?: Date): Promise<void> => {
   if (!db) {
     const requests = await fetchRequests();
     const updated = requests.map(r =>
-      r.id === requestId ? { ...r, resolvedAt: new Date() } : r
+      r.id === requestId ? { ...r, resolvedAt: new Date(), scheduledAt } : r
     );
     localStorage.setItem('one-to-one-requests', JSON.stringify(updated));
     return;
   }
 
   const requestRef = doc(db, 'requests', requestId);
-  await updateDoc(requestRef, { resolvedAt: Timestamp.now() });
+  const updateData: Record<string, any> = { resolvedAt: Timestamp.now() };
+  if (scheduledAt) {
+    updateData.scheduledAt = Timestamp.fromDate(scheduledAt);
+  }
+  await updateDoc(requestRef, updateData);
+};
+
+export const cancelRequest = async (requestId: string): Promise<void> => {
+  if (!db) {
+    const requests = await fetchRequests();
+    const updated = requests.filter(r => r.id !== requestId);
+    localStorage.setItem('one-to-one-requests', JSON.stringify(updated));
+    return;
+  }
+
+  await deleteDoc(doc(db, 'requests', requestId));
 };
 
 // ============ MEMBER BY ACCESS CODE ============
