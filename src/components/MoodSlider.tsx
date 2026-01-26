@@ -7,7 +7,6 @@ interface MoodSliderProps {
 }
 
 const MOOD_EMOJIS = ['😫', '😔', '😐', '🙂', '😄'];
-const MOTIVATION_EMOJIS = ['😩', '💪'];
 
 function getMoodEmoji(value: number): string {
   const index = Math.floor((value - 1) / 2.5);

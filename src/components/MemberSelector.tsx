@@ -6,7 +6,7 @@ interface MemberSelectorProps {
   members: TeamMember[];
   selectedMemberId: string | null;
   onSelect: (memberId: string) => void;
-  onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
+  onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt' | 'accessCode'>) => void;
   onDeleteMember?: (memberId: string) => void;
   onEditMember?: (member: TeamMember) => void;
   isAdmin?: boolean;

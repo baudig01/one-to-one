@@ -47,7 +47,7 @@ export function useData() {
   }, []);
 
   // Member operations
-  const addMember = useCallback(async (member: Omit<TeamMember, 'id' | 'createdAt'>) => {
+  const addMember = useCallback(async (member: Omit<TeamMember, 'id' | 'createdAt' | 'accessCode'>) => {
     try {
       const newMember = await addMemberService(member);
       setMembers(prev => [newMember, ...prev]);

@@ -12,7 +12,7 @@ interface DashboardPageProps {
   members: TeamMember[];
   meetings: Meeting[];
   requests?: OneToOneRequest[];
-  onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt'>) => void;
+  onAddMember?: (member: Omit<TeamMember, 'id' | 'createdAt' | 'accessCode'>) => void;
   onDeleteMember?: (memberId: string) => void;
   onEditMember?: (member: TeamMember) => void;
   onDeleteMeeting?: (meetingId: string) => void;
