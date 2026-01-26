@@ -89,7 +89,7 @@ export function DashboardPage({
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">One-to-One</h1>
+                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">One to One dev etam</h1>
                 <p className="text-sm text-gray-500">Format 15-20 min</p>
               </div>
               <div className="text-right text-xs sm:text-sm text-gray-500 sm:hidden">

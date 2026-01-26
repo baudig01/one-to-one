@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { DashboardPage, MeetingPage, MySpacePage } from './pages';
 import { ProtectedRoute } from './components';
 import { useData } from './hooks/useData';
-import { Loader2, Database, HardDrive } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 function App() {
   const {
@@ -18,7 +18,6 @@ function App() {
     updateMeeting,
     deleteMeeting,
     resolveRequest,
-    isFirebaseConfigured,
   } = useData();
 
   if (loading) {
@@ -50,27 +49,6 @@ function App() {
 
   return (
     <BrowserRouter>
-      {/* Storage indicator */}
-      <div className="fixed bottom-4 right-4 z-50">
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
-          ${isFirebaseConfigured
-            ? 'bg-green-100 text-green-700'
-            : 'bg-yellow-100 text-yellow-700'}`}
-        >
-          {isFirebaseConfigured ? (
-            <>
-              <Database className="w-3.5 h-3.5" />
-              Firebase
-            </>
-          ) : (
-            <>
-              <HardDrive className="w-3.5 h-3.5" />
-              Local Storage
-            </>
-          )}
-        </div>
-      </div>
-
       <Routes>
         {/* Mode lecture - membres */}
         <Route
