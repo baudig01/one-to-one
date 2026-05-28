@@ -9,7 +9,6 @@ interface StepIndicatorProps {
 const STEPS: { key: MeetingStep; label: string; emoji: string; duration: string }[] = [
   { key: 'pulse', label: 'Ressenti', emoji: '💭', duration: '2 min' },
   { key: 'wins-pains', label: 'Réussites & Difficultés', emoji: '🎯', duration: '8 min' },
-  { key: 'radar', label: 'Radar', emoji: '📊', duration: '5 min' },
   { key: 'actions', label: 'Actions', emoji: '✅', duration: '3 min' },
   { key: 'summary', label: 'Résumé', emoji: '📝', duration: '2 min' },
 ];

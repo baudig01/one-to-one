@@ -4,7 +4,6 @@ import { ArrowLeft, ArrowRight, Save, Clock, BookOpen } from 'lucide-react';
 import {
   MoodSlider,
   WinsPains,
-  RadarChart,
   ActionTracker,
   StepIndicator,
 } from '../components';
@@ -13,7 +12,6 @@ import type {
   MeetingStep,
   MoodEntry,
   WinPainItem,
-  RadarData,
   ActionItem,
   TeamMember,
 } from '../types';
@@ -27,13 +25,52 @@ interface MeetingPageProps {
 }
 
 const DEFAULT_MOOD: MoodEntry = { mood: 5, energy: 5 };
-const DEFAULT_RADAR: RadarData = {
-  process: 3,
-  ambiance: 3,
-  work: 3,
+
+const STEPS: MeetingStep[] = ['pulse', 'wins-pains', 'actions', 'summary'];
+
+interface MeetingDraft {
+  mood: MoodEntry;
+  winsPains: WinPainItem[];
+  actions: ActionItem[];
+  previousActions: ActionItem[];
+  leadComment: string;
+  currentStep: MeetingStep;
+  pendingNoteIds: string[];
+  savedAt: string;
+}
+
+const reviveActionDates = (actions: any[]): ActionItem[] =>
+  (actions || []).map(a => ({
+    ...a,
+    createdAt: a.createdAt ? new Date(a.createdAt) : new Date(),
+    completedAt: a.completedAt ? new Date(a.completedAt) : undefined,
+  }));
+
+const loadDraft = (key: string): MeetingDraft | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      ...parsed,
+      actions: reviveActionDates(parsed.actions),
+      previousActions: reviveActionDates(parsed.previousActions),
+    };
+  } catch {
+    return null;
+  }
 };
 
-const STEPS: MeetingStep[] = ['pulse', 'wins-pains', 'radar', 'actions', 'summary'];
+const formatRelative = (iso: string): string => {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'à l\'instant';
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `il y a ${days} j`;
+};
 
 export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting }: MeetingPageProps) {
   const { memberId, meetingId } = useParams();
@@ -46,19 +83,27 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
     .filter(m => m.memberId === memberId)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
-  const [currentStep, setCurrentStep] = useState<MeetingStep>('pulse');
-  const [mood, setMood] = useState<MoodEntry>(existingMeeting?.mood || DEFAULT_MOOD);
-  const [winsPains, setWinsPains] = useState<WinPainItem[]>(existingMeeting?.winsPains || []);
-  const [radar, setRadar] = useState<RadarData>(existingMeeting?.radar || DEFAULT_RADAR);
-  const [actions, setActions] = useState<ActionItem[]>(existingMeeting?.actions || []);
+  const draftKey = isEditMode
+    ? `meeting-draft-edit-${meetingId}`
+    : `meeting-draft-new-${memberId}`;
+  const initialDraft = loadDraft(draftKey);
+
+  const [currentStep, setCurrentStep] = useState<MeetingStep>(initialDraft?.currentStep || 'pulse');
+  const [mood, setMood] = useState<MoodEntry>(initialDraft?.mood || existingMeeting?.mood || DEFAULT_MOOD);
+  const [winsPains, setWinsPains] = useState<WinPainItem[]>(initialDraft?.winsPains || existingMeeting?.winsPains || []);
+  const [actions, setActions] = useState<ActionItem[]>(initialDraft?.actions || existingMeeting?.actions || []);
   const [previousActions, setPreviousActions] = useState<ActionItem[]>(
-    isEditMode ? [] : (previousMeeting?.actions || [])
+    initialDraft?.previousActions || (isEditMode ? [] : (previousMeeting?.actions || []))
   );
   const [startTime] = useState(Date.now());
   const [elapsed, setElapsed] = useState(existingMeeting?.duration ? existingMeeting.duration * 60 : 0);
-  const [pendingNoteIds, setPendingNoteIds] = useState<string[]>([]);
-  const [notesLoaded, setNotesLoaded] = useState(isEditMode);
-  const [leadComment, setLeadComment] = useState(existingMeeting?.leadComment || '');
+  const [pendingNoteIds, setPendingNoteIds] = useState<string[]>(initialDraft?.pendingNoteIds || []);
+  const [notesLoaded, setNotesLoaded] = useState(isEditMode || !!initialDraft);
+  const [leadComment, setLeadComment] = useState(initialDraft?.leadComment ?? existingMeeting?.leadComment ?? '');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(!!initialDraft);
+  const [draftSavedAt] = useState<string | null>(initialDraft?.savedAt ?? null);
 
   useEffect(() => {
     if (!member) {
@@ -100,6 +145,39 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
     return () => clearInterval(timer);
   }, [startTime]);
 
+  // Auto-save draft to localStorage on every change
+  useEffect(() => {
+    if (!memberId) return;
+    try {
+      const draft: MeetingDraft = {
+        mood,
+        winsPains,
+        actions,
+        previousActions,
+        leadComment,
+        currentStep,
+        pendingNoteIds,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {
+      // localStorage indisponible / plein — on ignore silencieusement
+    }
+  }, [draftKey, memberId, mood, winsPains, actions, previousActions, leadComment, currentStep, pendingNoteIds]);
+
+  const discardDraft = () => {
+    try { localStorage.removeItem(draftKey); } catch { /* noop */ }
+    setMood(existingMeeting?.mood || DEFAULT_MOOD);
+    setWinsPains(existingMeeting?.winsPains || []);
+    setActions(existingMeeting?.actions || []);
+    setPreviousActions(isEditMode ? [] : (previousMeeting?.actions || []));
+    setLeadComment(existingMeeting?.leadComment || '');
+    setCurrentStep('pulse');
+    setPendingNoteIds([]);
+    setNotesLoaded(isEditMode);
+    setDraftRestored(false);
+  };
+
   if (!member) return null;
 
   const currentStepIndex = STEPS.indexOf(currentStep);
@@ -123,6 +201,10 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError(null);
+
     const newMeetingId = isEditMode ? meetingId! : crypto.randomUUID();
     const meeting: Meeting = {
       id: newMeetingId,
@@ -130,27 +212,38 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
       date: existingMeeting?.date || new Date(),
       mood,
       winsPains,
-      radar,
       actions: isEditMode ? actions : [...actions, ...previousActions.filter(a => !a.completed)],
       leadComment: leadComment.trim() || undefined,
       duration: Math.floor(elapsed / 60),
     };
 
-    // Mark pending notes as used (only for new meetings)
-    if (!isEditMode && pendingNoteIds.length > 0) {
-      try {
-        await markNotesAsUsed(pendingNoteIds, newMeetingId);
-      } catch (error) {
-        console.error('Error marking notes as used:', error);
+    try {
+      if (isEditMode && onUpdateMeeting) {
+        await onUpdateMeeting(meeting);
+      } else {
+        await onSaveMeeting(meeting);
       }
-    }
 
-    if (isEditMode && onUpdateMeeting) {
-      onUpdateMeeting(meeting);
-    } else {
-      onSaveMeeting(meeting);
+      // Mark pending notes as used (only after successful save of new meeting)
+      if (!isEditMode && pendingNoteIds.length > 0) {
+        try {
+          await markNotesAsUsed(pendingNoteIds, newMeetingId);
+        } catch (error) {
+          console.error('Error marking notes as used:', error);
+        }
+      }
+
+      try { localStorage.removeItem(draftKey); } catch { /* noop */ }
+      navigate('/admin');
+    } catch (error) {
+      console.error('Error saving meeting:', error);
+      setSaveError(
+        error instanceof Error
+          ? `Échec de la sauvegarde : ${error.message}`
+          : 'Échec de la sauvegarde. Vos modifications sont conservées, réessayez.'
+      );
+      setSaving(false);
     }
-    navigate('/admin');
   };
 
   const renderStepContent = () => {
@@ -195,20 +288,6 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
                 rows={3}
               />
             </div>
-          </div>
-        );
-
-      case 'radar':
-        return (
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-800 mb-6">
-              📊 Radar Satisfaction
-            </h2>
-            <RadarChart
-              data={radar}
-              onChange={setRadar}
-              previousData={previousMeeting?.radar}
-            />
           </div>
         );
 
@@ -329,6 +408,19 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
 
       {/* Content */}
       <main className="max-w-4xl mx-auto px-4 py-6">
+        {draftRestored && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-3 text-sm">
+            <span className="text-amber-800">
+              📝 Brouillon restauré{draftSavedAt ? ` (sauvegardé ${formatRelative(draftSavedAt)})` : ''}.
+            </span>
+            <button
+              onClick={discardDraft}
+              className="text-amber-700 hover:text-amber-900 font-medium underline underline-offset-2"
+            >
+              Repartir de zéro
+            </button>
+          </div>
+        )}
         {renderStepContent()}
 
         {/* Navigation */}
@@ -343,13 +435,21 @@ export function MeetingPage({ members, meetings, onSaveMeeting, onUpdateMeeting 
           </button>
 
           {currentStep === 'summary' ? (
-            <button
-              onClick={handleSave}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Save className="w-4 h-4" />
-              Enregistrer
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              {saveError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 max-w-md">
+                  {saveError}
+                </div>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </button>
+            </div>
           ) : (
             <button
               onClick={goToNextStep}

@@ -6,7 +6,7 @@ import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown
 import { Link } from 'react-router-dom';
 import { MemberSelector, AdminCodeModal } from '../components';
 import type { TeamMember, Meeting, OneToOneRequest } from '../types';
-import { RADAR_LABELS, WIN_PAIN_CONFIG } from '../types';
+import { WIN_PAIN_CONFIG } from '../types';
 
 interface DashboardPageProps {
   members: TeamMember[];
@@ -268,28 +268,6 @@ export function DashboardPage({
                                 </ul>
                               </div>
                             )}
-
-                            {/* Radar */}
-                            <div>
-                              <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                                📊 Radar
-                              </h4>
-                              <div className="flex gap-2 flex-wrap">
-                                {(Object.keys(meeting.radar) as (keyof typeof meeting.radar)[]).map(key => (
-                                  <span
-                                    key={key}
-                                    className={`text-xs px-2 py-1 rounded-full
-                                      ${meeting.radar[key] >= 4
-                                        ? 'bg-green-100 text-green-700'
-                                        : meeting.radar[key] >= 3
-                                          ? 'bg-yellow-100 text-yellow-700'
-                                          : 'bg-red-100 text-red-700'}`}
-                                  >
-                                    {RADAR_LABELS[key]}: {meeting.radar[key]}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
 
                             {/* Notes */}
                             {meeting.notes && (

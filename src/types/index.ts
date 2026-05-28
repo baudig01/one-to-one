@@ -39,12 +39,6 @@ export interface WinPainItem {
   text: string;
 }
 
-export interface RadarData {
-  process: number; // 1-5
-  ambiance: number;
-  work: number;
-}
-
 export interface ActionItem {
   id: string;
   text: string;
@@ -60,20 +54,13 @@ export interface Meeting {
   date: Date;
   mood: MoodEntry;
   winsPains: WinPainItem[];
-  radar: RadarData;
   actions: ActionItem[];
   notes?: string;
   leadComment?: string; // Commentaire privé du lead (non visible par le collaborateur)
   duration?: number; // en minutes
 }
 
-export type MeetingStep = 'pulse' | 'wins-pains' | 'radar' | 'actions' | 'summary';
-
-export const RADAR_LABELS: Record<keyof RadarData, string> = {
-  process: 'Process',
-  ambiance: 'Ambiance de l\'équipe',
-  work: 'Travail',
-};
+export type MeetingStep = 'pulse' | 'wins-pains' | 'actions' | 'summary';
 
 export const WIN_PAIN_CONFIG = {
   win: { label: 'Réussite', emoji: '🎉', color: 'bg-green-100 border-green-400 text-green-800' },

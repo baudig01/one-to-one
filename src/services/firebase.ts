@@ -13,6 +13,17 @@ import {
 } from 'firebase/firestore';
 import type { TeamMember, Meeting, MemberNote, OneToOneRequest } from '../types';
 
+// Retire les clés dont la valeur est undefined (Firebase les refuse)
+const stripUndefined = <T extends Record<string, any>>(obj: T): Partial<T> => {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as Partial<T>;
+};
+
 // Génère un code d'accès simple (6 caractères)
 const generateAccessCode = (): string => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sans I, O, 0, 1 pour éviter confusion
@@ -133,11 +144,11 @@ export const updateMember = async (member: TeamMember): Promise<void> => {
   }
 
   const memberRef = doc(db, 'members', member.id);
-  await updateDoc(memberRef, {
+  await updateDoc(memberRef, stripUndefined({
     name: member.name,
     role: member.role,
     avatar: member.avatar,
-  });
+  }));
 };
 
 export const deleteMember = async (memberId: string): Promise<void> => {
@@ -183,15 +194,20 @@ export const addMeeting = async (meeting: Meeting): Promise<Meeting> => {
     return meeting;
   }
 
-  const meetingData = {
-    ...meeting,
+  const meetingData = stripUndefined({
+    memberId: meeting.memberId,
+    mood: meeting.mood,
+    winsPains: meeting.winsPains,
+    notes: meeting.notes,
+    leadComment: meeting.leadComment,
+    duration: meeting.duration,
     date: Timestamp.fromDate(new Date(meeting.date)),
     actions: meeting.actions.map(a => ({
       ...a,
       createdAt: Timestamp.fromDate(new Date(a.createdAt)),
       completedAt: a.completedAt ? Timestamp.fromDate(new Date(a.completedAt)) : null,
     })),
-  };
+  });
 
   const docRef = await addDoc(collection(db, 'meetings'), meetingData);
   return { ...meeting, id: docRef.id };
@@ -206,18 +222,18 @@ export const updateMeeting = async (meeting: Meeting): Promise<void> => {
   }
 
   const meetingRef = doc(db, 'meetings', meeting.id);
-  await updateDoc(meetingRef, {
+  await updateDoc(meetingRef, stripUndefined({
     mood: meeting.mood,
     winsPains: meeting.winsPains,
-    radar: meeting.radar,
     actions: meeting.actions.map(a => ({
       ...a,
       createdAt: Timestamp.fromDate(new Date(a.createdAt)),
       completedAt: a.completedAt ? Timestamp.fromDate(new Date(a.completedAt)) : null,
     })),
     notes: meeting.notes,
+    leadComment: meeting.leadComment,
     duration: meeting.duration,
-  });
+  }));
 };
 
 export const deleteMeeting = async (meetingId: string): Promise<void> => {
