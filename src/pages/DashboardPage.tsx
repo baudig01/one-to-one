@@ -1,12 +1,34 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
+import { useMemo, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Play, TrendingUp, TrendingDown, Minus, Calendar, BarChart3, ChevronDown, ChevronUp, Eye, Shield, Bell, CheckCircle, AlertTriangle, BookOpen, Trash2, Pencil } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { MemberSelector, AdminCodeModal } from '../components';
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  Bell,
+  BookOpen,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Gauge,
+  Hand,
+  Lightbulb,
+  ListChecks,
+  Minus,
+  Pencil,
+  Play,
+  Shield,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
+import { MemberSelector, AdminCodeModal, Sparkline } from '../components';
 import type { TeamMember, Meeting, OneToOneRequest } from '../types';
 import { WIN_PAIN_CONFIG } from '../types';
+import { averageScore, computeSentiment, getScoreTone } from '../utils/sentiment';
 
 interface DashboardPageProps {
   members: TeamMember[];
@@ -18,6 +40,62 @@ interface DashboardPageProps {
   onDeleteMeeting?: (meetingId: string) => void;
   onResolveRequest?: (requestId: string, scheduledAt?: Date) => void;
   isAdmin?: boolean;
+}
+
+type SortKey = 'name' | 'mood' | 'recency';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  name: 'Nom',
+  mood: 'Ressenti',
+  recency: 'Dernier échange',
+};
+
+const AVATAR_GRADIENTS = [
+  'from-primary-500 to-primary-700',
+  'from-energy-500 to-energy-700',
+  'from-positive-500 to-positive-700',
+  'from-warn-500 to-orange-600',
+  'from-fuchsia-500 to-purple-700',
+  'from-negative-500 to-negative-700',
+];
+
+const getInitials = (name: string) =>
+  name.split(' ').map(part => part[0]).join('').toUpperCase().slice(0, 2);
+
+/** Nombre de jours depuis le dernier échange (null si aucun). */
+const daysSince = (date?: Date) =>
+  date ? differenceInCalendarDays(new Date(), new Date(date)) : null;
+
+function StatCard({
+  icon,
+  label,
+  value,
+  hint,
+  tone = 'text-slate-900',
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-soft">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="stat-label">{label}</p>
+          <p className={`stat-value mt-1 ${tone}`}>{value}</p>
+          {hint && <p className="mt-0.5 truncate text-[11px] text-slate-400">{hint}</p>}
+        </div>
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
+          {icon}
+        </span>
+      </div>
+      {children && <div className="mt-2">{children}</div>}
+    </div>
+  );
 }
 
 export function DashboardPage({
@@ -39,40 +117,99 @@ export function DashboardPage({
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [deletingMeetingId, setDeletingMeetingId] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
 
-  const getMemberMeetings = (memberId: string) => {
-    return meetings
-      .filter(m => m.memberId === memberId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  };
+  // Meetings groupés par membre, du plus récent au plus ancien
+  const meetingsByMember = useMemo(() => {
+    const map = new Map<string, Meeting[]>();
+    for (const meeting of meetings) {
+      const list = map.get(meeting.memberId) ?? [];
+      list.push(meeting);
+      map.set(meeting.memberId, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    return map;
+  }, [meetings]);
 
-  const getLastMeeting = (memberId: string) => {
-    const memberMeetings = getMemberMeetings(memberId);
-    return memberMeetings[0];
-  };
+  const getMemberMeetings = (memberId: string) => meetingsByMember.get(memberId) ?? [];
+  const getLastMeeting = (memberId: string) => getMemberMeetings(memberId)[0];
+
+  /** Courbe de ressenti d'un membre, dans l'ordre chronologique. */
+  const getMoodHistory = (memberId: string) =>
+    getMemberMeetings(memberId).slice(0, 6).map(m => m.mood.mood).reverse();
 
   const getMoodTrend = (memberId: string): 'up' | 'down' | 'stable' | null => {
     const memberMeetings = getMemberMeetings(memberId);
     if (memberMeetings.length < 2) return null;
-
     const latest = memberMeetings[0].mood.mood;
     const previous = memberMeetings[1].mood.mood;
-
     if (latest > previous) return 'up';
     if (latest < previous) return 'down';
     return 'stable';
   };
 
-  const startMeeting = () => {
-    if (selectedMemberId) {
-      navigate(`/meeting/${selectedMemberId}`);
+  // ---------- Indicateurs d'équipe ----------
+  const latestMeetings = useMemo(
+    () => members.map(m => getLastMeeting(m.id)).filter((m): m is Meeting => !!m),
+    [members, meetingsByMember]
+  );
+
+  const teamMood = averageScore(latestMeetings.map(m => m.mood.mood));
+  const teamTone = getScoreTone(teamMood ?? 5.5);
+  const openActions = latestMeetings.reduce(
+    (total, meeting) => total + meeting.actions.filter(a => !a.completed).length,
+    0
+  );
+  const teamTrend = useMemo(
+    () =>
+      [...meetings]
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(-8)
+        .map(m => m.mood.mood),
+    [meetings]
+  );
+  const needsAttention = members.filter(member => {
+    const last = getLastMeeting(member.id);
+    const days = daysSince(last?.date);
+    return days === null || days > 30 || (last ? last.mood.mood <= 4 : false);
+  }).length;
+
+  const sortedMembers = useMemo(() => {
+    const list = [...members];
+    if (sortKey === 'name') {
+      return list.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     }
+    if (sortKey === 'mood') {
+      // Les ressentis les plus bas en premier : ce sont eux qui demandent de l'attention
+      return list.sort((a, b) => {
+        const aMood = getLastMeeting(a.id)?.mood.mood ?? -1;
+        const bMood = getLastMeeting(b.id)?.mood.mood ?? -1;
+        return aMood - bMood;
+      });
+    }
+    return list.sort((a, b) => {
+      const aDate = getLastMeeting(a.id)?.date;
+      const bDate = getLastMeeting(b.id)?.date;
+      const aTime = aDate ? new Date(aDate).getTime() : 0;
+      const bTime = bDate ? new Date(bDate).getTime() : 0;
+      return aTime - bTime;
+    });
+  }, [members, meetingsByMember, sortKey]);
+
+  const cycleSort = () => {
+    const order: SortKey[] = ['name', 'mood', 'recency'];
+    setSortKey(order[(order.indexOf(sortKey) + 1) % order.length]);
+  };
+
+  const startMeeting = () => {
+    if (selectedMemberId) navigate(`/meeting/${selectedMemberId}`);
   };
 
   const handleScheduleRequest = (requestId: string) => {
     if (!scheduledDate || !scheduledTime) return;
-    const dateTime = new Date(`${scheduledDate}T${scheduledTime}`);
-    onResolveRequest?.(requestId, dateTime);
+    onResolveRequest?.(requestId, new Date(`${scheduledDate}T${scheduledTime}`));
     setSchedulingRequestId(null);
     setScheduledDate('');
     setScheduledTime('');
@@ -82,61 +219,96 @@ export function DashboardPage({
   const selectedMemberMeetings = selectedMemberId ? getMemberMeetings(selectedMemberId) : [];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center justify-between">
+    <div className="min-h-screen pb-10">
+      {/* ---------- Header ---------- */}
+      <header className="glass-header">
+        <div className="mx-auto max-w-6xl px-4 py-3 sm:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-sm font-bold text-white shadow-soft">
+                1:1
+              </span>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">One to One dev etam</h1>
-                <p className="text-sm text-gray-500">Format 15-20 min</p>
-              </div>
-              <div className="text-right text-xs sm:text-sm text-gray-500 sm:hidden">
-                <p>{members.length} membre(s)</p>
-                <p>{meetings.length} meeting(s)</p>
+                <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
+                  One to One · Dev Etam
+                </h1>
+                <p className="text-xs text-slate-500">
+                  Rituel 15-20 min · {members.length} membre{members.length > 1 ? 's' : ''} ·{' '}
+                  {meetings.length} échange{meetings.length > 1 ? 's' : ''}
+                </p>
               </div>
             </div>
-            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
-              <div className="hidden sm:block text-right text-sm text-gray-500">
-                <p>{members.length} membre(s)</p>
-                <p>{meetings.length} meeting(s)</p>
-              </div>
+
+            <div className="flex items-center gap-2">
               {isAdmin ? (
-                <Link
-                  to="/"
-                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Passer en</span> mode Lecture
-                </Link>
+                <>
+                  <span className="chip hidden bg-warn-100 text-warn-800 sm:inline-flex">
+                    <Shield className="h-3.5 w-3.5" />
+                    Mode admin
+                  </span>
+                  <Link to="/" className="btn-secondary px-3 py-2 text-xs">
+                    <Eye className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Passer en</span> lecture
+                  </Link>
+                </>
               ) : (
-                <div className="flex items-center gap-2">
-                  <Link
-                    to="/my-space"
-                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 transition-colors"
-                  >
-                    <BookOpen className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Mon</span> Espace
+                <>
+                  <Link to="/my-space" className="btn-secondary px-3 py-2 text-xs">
+                    <BookOpen className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Mon</span> espace
                   </Link>
                   <button
                     onClick={() => setShowAdminModal(true)}
-                    className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+                    className="btn-primary px-3 py-2 text-xs"
                   >
-                    <Shield className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Mode</span> Admin
+                    <Shield className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Mode</span> admin
                   </button>
-                </div>
+                </>
               )}
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Member Selection */}
-          <div className="lg:col-span-2 space-y-6">
+      <main className="mx-auto max-w-6xl px-4 py-6">
+        {/* ---------- Indicateurs ---------- */}
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard
+            icon={<Users className="h-4 w-4" />}
+            label="Équipe"
+            value={`${members.length}`}
+            hint={`${latestMeetings.length} suivi${latestMeetings.length > 1 ? 's' : ''} en cours`}
+          />
+          <StatCard
+            icon={<Gauge className="h-4 w-4" />}
+            label="Ressenti moyen"
+            value={teamMood != null ? `${teamMood.toFixed(1)}/10` : '—'}
+            hint={teamMood != null ? teamTone.label : 'Aucun échange'}
+            tone={teamTone.text}
+          >
+            {teamTrend.length > 1 && (
+              <Sparkline values={teamTrend} stroke={teamTone.hex} width={120} height={26} />
+            )}
+          </StatCard>
+          <StatCard
+            icon={<ListChecks className="h-4 w-4" />}
+            label="Actions ouvertes"
+            value={`${openActions}`}
+            hint="Sur les derniers one-to-one"
+          />
+          <StatCard
+            icon={<AlertTriangle className="h-4 w-4" />}
+            label="À relancer"
+            value={`${needsAttention}`}
+            hint="Sans échange 30 j ou ressenti ≤ 4"
+            tone={needsAttention > 0 ? 'text-warn-600' : 'text-slate-900'}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* ---------- Colonne principale ---------- */}
+          <div className="space-y-6 lg:col-span-2">
             <div className="card">
               <MemberSelector
                 members={members}
@@ -149,95 +321,117 @@ export function DashboardPage({
               />
             </div>
 
-            {/* Start Meeting Button - Admin only */}
             {isAdmin && selectedMemberId && (
-              <button
-                onClick={startMeeting}
-                className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-3"
-              >
-                <Play className="w-6 h-6" />
-                Démarrer le One-to-One avec {selectedMember?.name}
+              <button onClick={startMeeting} className="btn-primary w-full py-4 text-base">
+                <Play className="h-5 w-5" />
+                Démarrer le one-to-one avec {selectedMember?.name}
               </button>
             )}
 
-            {/* Meeting History for Selected Member */}
+            {/* Historique du membre sélectionné */}
             {selectedMemberId && selectedMemberMeetings.length > 0 && (
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Historique de {selectedMember?.name}
-                </h3>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                    Historique de {selectedMember?.name}
+                  </h3>
+                  {getMoodHistory(selectedMemberId).length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-400">Tendance ressenti</span>
+                      <Sparkline
+                        values={getMoodHistory(selectedMemberId)}
+                        stroke={getScoreTone(selectedMemberMeetings[0].mood.mood).hex}
+                      />
+                    </div>
+                  )}
+                </div>
 
                 <div className="space-y-3">
                   {selectedMemberMeetings.slice(0, 5).map((meeting) => {
                     const isExpanded = expandedMeetingId === meeting.id;
+                    const sentiment = computeSentiment(meeting.winsPains);
+                    const tone = getScoreTone(meeting.mood.mood);
+                    const isAutoMood = meeting.mood.source === 'auto';
+
                     return (
                       <div
                         key={meeting.id}
-                        className="bg-gray-50 rounded-lg border border-gray-100 overflow-hidden"
+                        className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
                       >
-                        {/* Header cliquable */}
                         <button
                           onClick={() => setExpandedMeetingId(isExpanded ? null : meeting.id)}
-                          className="w-full p-4 text-left hover:bg-gray-100 transition-colors"
+                          className="w-full p-4 text-left transition-colors hover:bg-slate-50"
                         >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <Calendar className="w-4 h-4" />
+                          <div className="mb-3 flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium text-slate-700">
                               {format(new Date(meeting.date), 'dd MMMM yyyy', { locale: fr })}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm text-gray-500">
-                                {meeting.duration ? `${meeting.duration} min` : '-'}
+                            </span>
+                            <span className="flex items-center gap-2">
+                              <span className="text-xs text-slate-400">
+                                {meeting.duration ? `${meeting.duration} min` : '—'}
                               </span>
                               {isExpanded ? (
-                                <ChevronUp className="w-4 h-4 text-gray-400" />
+                                <ChevronUp className="h-4 w-4 text-slate-400" />
                               ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                                <ChevronDown className="h-4 w-4 text-slate-400" />
                               )}
-                            </div>
+                            </span>
                           </div>
 
-                          <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-1">
-                              <span className="text-lg">
-                                {meeting.mood.mood >= 7 ? '😄' : meeting.mood.mood >= 5 ? '🙂' : '😔'}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`chip ${tone.chip}`}>
+                              <span>{tone.emoji}</span>
+                              <span className="font-bold tabular-nums">{meeting.mood.mood}/10</span>
+                              {isAutoMood ? (
+                                <Gauge className="h-3 w-3 opacity-60" />
+                              ) : (
+                                <Hand className="h-3 w-3 opacity-60" />
+                              )}
+                            </span>
+                            <span className="chip bg-energy-50 text-energy-700">
+                              ⚡ <span className="tabular-nums">{meeting.mood.energy}/10</span>
+                            </span>
+                            <span className="chip bg-slate-100 text-slate-600 tabular-nums">
+                              <ListChecks className="h-3 w-3" />
+                              {meeting.actions.length}
+                            </span>
+
+                            {/* Équilibre positif / négatif de l'échange */}
+                            {sentiment.hasData && (
+                              <span className="flex min-w-[80px] flex-1 items-center gap-2">
+                                <span className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                                  <span
+                                    className="bg-positive-500"
+                                    style={{ width: `${sentiment.positiveShare}%` }}
+                                  />
+                                  <span
+                                    className="bg-negative-500"
+                                    style={{ width: `${sentiment.negativeShare}%` }}
+                                  />
+                                </span>
+                                <span className="text-[11px] tabular-nums text-slate-400">
+                                  {sentiment.positiveCount}+ / {sentiment.negativeCount}−
+                                </span>
                               </span>
-                              <span className="font-semibold">{meeting.mood.mood}/10</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-sm text-gray-500">
-                              <span className="text-green-600">
-                                {meeting.winsPains.filter(w => w.type === 'win').length} réussites
-                              </span>
-                              <span>/</span>
-                              <span className="text-red-600">
-                                {meeting.winsPains.filter(w => w.type === 'pain').length} difficultés
-                              </span>
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {meeting.actions.length} action(s)
-                            </div>
+                            )}
                           </div>
                         </button>
 
-                        {/* Panel de détails */}
                         {isExpanded && (
-                          <div className="border-t border-gray-200 p-4 space-y-4 bg-white">
-                            {/* Réussites & Difficultés */}
+                          <div className="space-y-4 border-t border-slate-200 bg-slate-50/60 p-4">
                             {meeting.winsPains.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                                  🎯 Réussites & Difficultés
-                                </h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <h4 className="section-title mb-2">Réussites & difficultés</h4>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                   {meeting.winsPains.map((item) => {
                                     const config = WIN_PAIN_CONFIG[item.type];
                                     return (
                                       <div
                                         key={item.id}
-                                        className={`p-2 rounded-lg text-sm ${config.color}`}
+                                        className={`rounded-xl border p-2.5 text-sm ${config.surface}`}
                                       >
-                                        <span className="mr-1">{config.emoji}</span>
+                                        <span className="mr-1.5">{config.emoji}</span>
                                         {item.text}
                                       </div>
                                     );
@@ -246,61 +440,58 @@ export function DashboardPage({
                               </div>
                             )}
 
-                            {/* Actions */}
                             {meeting.actions.length > 0 && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                                  ✅ Actions
-                                </h4>
-                                <ul className="space-y-1">
+                                <h4 className="section-title mb-2">Actions</h4>
+                                <ul className="space-y-1.5">
                                   {meeting.actions.map((action) => (
                                     <li
                                       key={action.id}
                                       className={`flex items-center gap-2 text-sm ${
-                                        action.completed ? 'text-gray-400 line-through' : 'text-gray-700'
+                                        action.completed
+                                          ? 'text-slate-400 line-through'
+                                          : 'text-slate-700'
                                       }`}
                                     >
                                       <span>{action.assignee === 'lead' ? '👤' : '🧑‍💻'}</span>
                                       <span>{action.text}</span>
-                                      {action.completed && <span className="text-green-500">✓</span>}
+                                      {action.completed && (
+                                        <CheckCircle className="h-3.5 w-3.5 text-positive-500" />
+                                      )}
                                     </li>
                                   ))}
                                 </ul>
                               </div>
                             )}
 
-                            {/* Notes */}
                             {meeting.notes && (
                               <div>
-                                <h4 className="text-sm font-semibold text-gray-700 mb-2">
-                                  📝 Notes
-                                </h4>
-                                <p className="text-sm text-gray-600 whitespace-pre-wrap">
+                                <h4 className="section-title mb-2">Notes</h4>
+                                <p className="whitespace-pre-wrap text-sm text-slate-600">
                                   {meeting.notes}
                                 </p>
                               </div>
                             )}
 
-                            {/* Commentaire lead - Admin only */}
                             {isAdmin && meeting.leadComment && (
-                              <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                                <h4 className="text-sm font-semibold text-purple-700 mb-2 flex items-center gap-2">
-                                  <span className="bg-purple-200 text-purple-800 text-xs px-2 py-0.5 rounded-full">Lead</span>
+                              <div className="rounded-xl border border-primary-200 bg-primary-50 p-3">
+                                <h4 className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-primary-700">
+                                  <span className="chip bg-primary-200 text-primary-800">Lead</span>
                                   Commentaire privé
                                 </h4>
-                                <p className="text-sm text-purple-800 whitespace-pre-wrap">
+                                <p className="whitespace-pre-wrap text-sm text-primary-900">
                                   {meeting.leadComment}
                                 </p>
                               </div>
                             )}
 
-                            {/* Actions Admin */}
                             {isAdmin && (
-                              <div className="pt-3 mt-3 border-t border-gray-200">
+                              <div className="border-t border-slate-200 pt-3">
                                 {deletingMeetingId === meeting.id ? (
-                                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                    <p className="text-sm text-red-800 mb-3">
-                                      Supprimer ce one-to-one du {format(new Date(meeting.date), 'dd MMMM yyyy', { locale: fr })} ?
+                                  <div className="rounded-xl border border-negative-200 bg-negative-50 p-3">
+                                    <p className="mb-3 text-sm text-negative-800">
+                                      Supprimer ce one-to-one du{' '}
+                                      {format(new Date(meeting.date), 'dd MMMM yyyy', { locale: fr })} ?
                                     </p>
                                     <div className="flex justify-end gap-2">
                                       <button
@@ -308,7 +499,7 @@ export function DashboardPage({
                                           e.stopPropagation();
                                           setDeletingMeetingId(null);
                                         }}
-                                        className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                        className="btn-ghost px-3 py-1.5 text-xs"
                                       >
                                         Annuler
                                       </button>
@@ -318,22 +509,22 @@ export function DashboardPage({
                                           onDeleteMeeting?.(meeting.id);
                                           setDeletingMeetingId(null);
                                         }}
-                                        className="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+                                        className="btn-danger px-3 py-1.5 text-xs"
                                       >
                                         Confirmer la suppression
                                       </button>
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="flex justify-end gap-2">
+                                  <div className="flex justify-end gap-1">
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         navigate(`/meeting/${meeting.memberId}/edit/${meeting.id}`);
                                       }}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                      className="btn-ghost px-3 py-1.5 text-xs text-primary-600 hover:bg-primary-50"
                                     >
-                                      <Pencil className="w-4 h-4" />
+                                      <Pencil className="h-3.5 w-3.5" />
                                       Modifier
                                     </button>
                                     <button
@@ -341,9 +532,9 @@ export function DashboardPage({
                                         e.stopPropagation();
                                         setDeletingMeetingId(meeting.id);
                                       }}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      className="btn-ghost px-3 py-1.5 text-xs text-negative-600 hover:bg-negative-50"
                                     >
-                                      <Trash2 className="w-4 h-4" />
+                                      <Trash2 className="h-3.5 w-3.5" />
                                       Supprimer
                                     </button>
                                   </div>
@@ -360,160 +551,181 @@ export function DashboardPage({
             )}
           </div>
 
-          {/* Right Column - Team Overview */}
+          {/* ---------- Colonne latérale ---------- */}
           <div className="space-y-6">
             <div className="card">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Vue d'ensemble</h3>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h3 className="text-base font-semibold text-slate-900">Vue d'ensemble</h3>
+                {members.length > 1 && (
+                  <button
+                    onClick={cycleSort}
+                    className="chip bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200"
+                    title="Changer le tri"
+                  >
+                    <ArrowUpDown className="h-3 w-3" />
+                    {SORT_LABELS[sortKey]}
+                  </button>
+                )}
+              </div>
 
               {members.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
+                <p className="py-8 text-center text-sm text-slate-500">
                   Ajoute des membres pour commencer
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {members.map((member) => {
+                <div className="space-y-2">
+                  {sortedMembers.map((member) => {
                     const lastMeeting = getLastMeeting(member.id);
                     const trend = getMoodTrend(member.id);
+                    const history = getMoodHistory(member.id);
+                    const days = daysSince(lastMeeting?.date);
+                    const tone = lastMeeting ? getScoreTone(lastMeeting.mood.mood) : null;
+                    const overdue = days === null || days > 30;
+                    const isSelected = selectedMemberId === member.id;
+                    const colorIndex = members.findIndex(m => m.id === member.id);
 
                     return (
-                      <div
+                      <button
                         key={member.id}
                         onClick={() => setSelectedMemberId(member.id)}
-                        className={`p-3 rounded-lg border cursor-pointer transition-all
-                          ${selectedMemberId === member.id
-                            ? 'border-primary-500 bg-primary-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
+                        className={`w-full rounded-2xl border p-3 text-left transition-all ${
+                          isSelected
+                            ? 'border-primary-400 bg-primary-50/70 shadow-soft'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                        }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900">{member.name}</p>
-                            <p className="text-xs text-gray-500">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white ${
+                              AVATAR_GRADIENTS[colorIndex % AVATAR_GRADIENTS.length]
+                            }`}
+                          >
+                            {getInitials(member.name)}
+                          </span>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-900">{member.name}</p>
+                            <p className="truncate text-[11px] text-slate-500">
                               {lastMeeting
-                                ? `Dernier: ${format(new Date(lastMeeting.date), 'dd/MM')}`
-                                : 'Aucun meeting'}
+                                ? days === 0
+                                  ? "Échange aujourd'hui"
+                                  : `Il y a ${days} j`
+                                : 'Aucun échange'}
                             </p>
                           </div>
 
-                          {lastMeeting && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">
-                                {lastMeeting.mood.mood >= 7
-                                  ? '😄'
-                                  : lastMeeting.mood.mood >= 5
-                                    ? '🙂'
-                                    : '😔'}
+                          <div className="flex flex-shrink-0 items-center gap-2">
+                            {history.length > 1 && tone && (
+                              <Sparkline values={history} stroke={tone.hex} width={56} height={22} />
+                            )}
+                            {lastMeeting && tone && (
+                              <span className={`chip ${tone.chip} tabular-nums`}>
+                                {tone.emoji} {lastMeeting.mood.mood}
                               </span>
-                              {trend === 'up' && <TrendingUp className="w-4 h-4 text-green-500" />}
-                              {trend === 'down' && <TrendingDown className="w-4 h-4 text-red-500" />}
-                              {trend === 'stable' && <Minus className="w-4 h-4 text-gray-400" />}
-                            </div>
-                          )}
+                            )}
+                            {trend === 'up' && <TrendingUp className="h-4 w-4 text-positive-500" />}
+                            {trend === 'down' && <TrendingDown className="h-4 w-4 text-negative-500" />}
+                            {trend === 'stable' && <Minus className="h-4 w-4 text-slate-300" />}
+                          </div>
                         </div>
-                      </div>
+
+                        {overdue && (
+                          <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-warn-700">
+                            <AlertTriangle className="h-3 w-3" />
+                            {days === null ? 'Jamais rencontré' : `${days} jours sans one-to-one`}
+                          </p>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
               )}
             </div>
 
-            {/* Pending Requests - Admin only */}
+            {/* Demandes en attente — admin */}
             {isAdmin && requests.length > 0 && (
-              <div className="card border-orange-200 bg-orange-50">
-                <h3 className="text-lg font-semibold text-orange-800 mb-4 flex items-center gap-2">
-                  <Bell className="w-5 h-5" />
+              <div className="card border-warn-200 bg-warn-50/60">
+                <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-warn-900">
+                  <Bell className="h-4 w-4" />
                   Demandes en attente
-                  <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded-full">
-                    {requests.length}
-                  </span>
+                  <span className="chip bg-warn-500 text-white tabular-nums">{requests.length}</span>
                 </h3>
 
                 <div className="space-y-3">
                   {requests.map((request) => {
                     const member = members.find(m => m.id === request.memberId);
                     const urgencyConfig = {
-                      low: { label: 'Pas urgent', color: 'bg-green-100 text-green-700', icon: null },
-                      medium: { label: 'Normal', color: 'bg-yellow-100 text-yellow-700', icon: null },
-                      high: { label: 'Urgent', color: 'bg-red-100 text-red-700', icon: AlertTriangle },
+                      low: { label: 'Pas urgent', color: 'bg-positive-50 text-positive-700', icon: null },
+                      medium: { label: 'Normal', color: 'bg-warn-100 text-warn-800', icon: null },
+                      high: { label: 'Urgent', color: 'bg-negative-50 text-negative-700', icon: AlertTriangle },
                     };
                     const config = urgencyConfig[request.urgency];
                     const UrgencyIcon = config.icon;
                     const isScheduling = schedulingRequestId === request.id;
 
                     return (
-                      <div
-                        key={request.id}
-                        className="bg-white rounded-lg p-3 border border-orange-200"
-                      >
+                      <div key={request.id} className="rounded-2xl border border-warn-200 bg-white p-3">
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-gray-900">
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-slate-900">
                                 {member?.name || 'Membre inconnu'}
                               </span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${config.color}`}>
-                                {UrgencyIcon && <UrgencyIcon className="w-3 h-3" />}
+                              <span className={`chip ${config.color}`}>
+                                {UrgencyIcon && <UrgencyIcon className="h-3 w-3" />}
                                 {config.label}
                               </span>
                             </div>
                             {request.reason && (
-                              <p className="text-sm text-gray-600 mb-2">
-                                "{request.reason}"
-                              </p>
+                              <p className="mb-2 text-sm italic text-slate-600">« {request.reason} »</p>
                             )}
-                            <p className="text-xs text-gray-400">
+                            <p className="text-[11px] text-slate-400">
                               {format(new Date(request.createdAt), 'dd MMM à HH:mm', { locale: fr })}
                             </p>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-shrink-0 gap-1">
                             <button
                               onClick={() => {
                                 setSelectedMemberId(request.memberId);
                                 navigate(`/meeting/${request.memberId}`);
                               }}
-                              className="btn-primary text-xs px-3 py-1.5"
+                              className="btn-primary px-2.5 py-1.5 text-xs"
                             >
-                              <Play className="w-3 h-3 mr-1" />
+                              <Play className="h-3 w-3" />
                               Démarrer
                             </button>
                             <button
                               onClick={() => setSchedulingRequestId(isScheduling ? null : request.id)}
-                              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+                              className="btn-icon hover:bg-positive-50 hover:text-positive-600"
                               title="Planifier le one-to-one"
                             >
-                              <CheckCircle className="w-5 h-5" />
+                              <CheckCircle className="h-5 w-5" />
                             </button>
                           </div>
                         </div>
 
-                        {/* Formulaire de planification */}
                         {isScheduling && (
-                          <div className="mt-3 pt-3 border-t border-orange-100">
-                            <p className="text-sm font-medium text-gray-700 mb-2">
-                              Planifier le one-to-one :
-                            </p>
-                            <div className="flex gap-2 mb-3">
-                              <div className="flex-1">
-                                <input
-                                  type="date"
-                                  value={scheduledDate}
-                                  onChange={(e) => setScheduledDate(e.target.value)}
-                                  className="input-field text-sm"
-                                  min={new Date().toISOString().split('T')[0]}
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <input
-                                  type="time"
-                                  value={scheduledTime}
-                                  onChange={(e) => setScheduledTime(e.target.value)}
-                                  className="input-field text-sm"
-                                />
-                              </div>
+                          <div className="mt-3 space-y-2 border-t border-warn-100 pt-3">
+                            <p className="text-xs font-medium text-slate-600">Planifier le one-to-one :</p>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={scheduledDate}
+                                onChange={(e) => setScheduledDate(e.target.value)}
+                                className="input-sm"
+                                min={new Date().toISOString().split('T')[0]}
+                              />
+                              <input
+                                type="time"
+                                value={scheduledTime}
+                                onChange={(e) => setScheduledTime(e.target.value)}
+                                className="input-sm"
+                              />
                             </div>
                             <button
                               onClick={() => handleScheduleRequest(request.id)}
                               disabled={!scheduledDate || !scheduledTime}
-                              className="w-full btn-primary text-sm py-2 disabled:opacity-50"
+                              className="btn-primary w-full py-2 text-xs"
                             >
                               Confirmer
                             </button>
@@ -526,21 +738,35 @@ export function DashboardPage({
               </div>
             )}
 
-            {/* Tips */}
-            <div className="card bg-gradient-to-br from-primary-50 to-indigo-50 border-primary-100">
-              <h3 className="font-semibold text-primary-800 mb-2">💡 Tips</h3>
-              <ul className="text-sm text-primary-700 space-y-2">
-                <li>• Laisse le collaborateur parler 70% du temps</li>
-                <li>• Commence par demander une réussite</li>
-                <li>• Termine par un engagement mutuel</li>
-                <li>• Pas de status report - focus sur le ressenti</li>
+            {/* Rappels d'animation */}
+            <div className="card border-primary-100 bg-gradient-to-br from-primary-50 to-energy-50">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary-900">
+                <Lightbulb className="h-4 w-4" />
+                Bonnes pratiques
+              </h3>
+              <ul className="space-y-2 text-sm text-primary-800">
+                <li className="flex gap-2">
+                  <span className="text-primary-400">—</span>
+                  Laisse le collaborateur parler 70 % du temps
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary-400">—</span>
+                  Commence par demander une réussite
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary-400">—</span>
+                  Termine par un engagement mutuel
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-primary-400">—</span>
+                  Pas de status report : focus sur le ressenti
+                </li>
               </ul>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Modal code admin */}
       <AdminCodeModal
         isOpen={showAdminModal}
         onClose={() => setShowAdminModal(false)}

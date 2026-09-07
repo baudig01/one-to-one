@@ -1,35 +1,176 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
+  --app-bg: #f6f7fb;
+  --app-ink: #0f172a;
+
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.55;
   font-weight: 400;
-  color: #213547;
-  background-color: #f8fafc;
+  color: var(--app-ink);
+  background-color: var(--app-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* Dégradé très léger pour donner de la profondeur sans bruit visuel */
+  background-color: var(--app-bg);
+  background-image:
+    radial-gradient(120rem 40rem at 50% -20rem, rgb(99 102 241 / 0.10), transparent 60%),
+    radial-gradient(60rem 30rem at 100% 0%, rgb(6 182 212 / 0.07), transparent 65%);
+  background-attachment: fixed;
+}
+
+/* Scrollbars discrètes */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border: 3px solid transparent;
+  border-radius: 9999px;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer base {
+  /* Anneau de focus homogène et accessible */
+  :focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+  }
 }
 
 @layer components {
+  /* ---------- Surfaces ---------- */
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+    @apply bg-white rounded-2xl shadow-card border border-slate-200/70 p-5 sm:p-6;
+  }
+
+  .card-flat {
+    @apply bg-white rounded-2xl border border-slate-200/70 p-5 sm:p-6;
+  }
+
+  .card-interactive {
+    @apply bg-white rounded-2xl shadow-soft border border-slate-200/70 p-4
+           transition-all duration-200 hover:shadow-lift hover:border-slate-300 hover:-translate-y-0.5;
+  }
+
+  .glass-header {
+    @apply sticky top-0 z-30 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl
+           supports-[backdrop-filter]:bg-white/70;
+  }
+
+  .section-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+  }
+
+  /* ---------- Boutons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-medium
+           px-4 py-2.5 text-sm transition-all duration-150 select-none
+           disabled:opacity-45 disabled:cursor-not-allowed active:scale-[0.98];
   }
 
   .btn-primary {
-    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply btn text-white shadow-soft
+           bg-gradient-to-b from-primary-500 to-primary-600
+           hover:from-primary-500 hover:to-primary-700 hover:shadow-lift;
   }
 
   .btn-secondary {
-    @apply bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply btn bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 hover:border-slate-300;
   }
 
+  .btn-ghost {
+    @apply btn bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900;
+  }
+
+  .btn-danger {
+    @apply btn bg-negative-600 text-white hover:bg-negative-700 shadow-soft;
+  }
+
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-xl p-2 text-slate-400
+           transition-colors hover:bg-slate-100 hover:text-slate-700;
+  }
+
+  /* ---------- Formulaires ---------- */
   .input-field {
-    @apply w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900
+           placeholder:text-slate-400 transition-shadow
+           focus:outline-none focus:border-primary-400 focus:ring-4 focus:ring-primary-500/10;
+  }
+
+  .input-sm {
+    @apply w-full px-3 py-2 text-sm rounded-lg border border-slate-200 bg-white
+           placeholder:text-slate-400 focus:outline-none focus:border-primary-400
+           focus:ring-4 focus:ring-primary-500/10;
+  }
+
+  /* ---------- Chips / badges ---------- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .chip-neutral {
+    @apply chip bg-slate-100 text-slate-600;
+  }
+
+  .badge-dot {
+    @apply inline-block w-1.5 h-1.5 rounded-full;
+  }
+
+  /* ---------- Divers ---------- */
+  .divider {
+    @apply h-px w-full bg-slate-200/80;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold tracking-tight tabular-nums;
+  }
+
+  .stat-label {
+    @apply text-[11px] font-medium uppercase tracking-wider text-slate-400;
+  }
+
+  /* Piste de slider partagée par le ressenti et la motivation */
+  .range-track {
+    @apply w-full h-2.5 rounded-full appearance-none cursor-pointer
+           [&::-webkit-slider-thumb]:appearance-none
+           [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
+           [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white
+           [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:shadow-lift
+           [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:transition-transform
+           [&::-webkit-slider-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:active:scale-95
+           [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:rounded-full
+           [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2
+           disabled:cursor-not-allowed disabled:opacity-60;
   }
 }

@@ -1,19 +1,33 @@
-import { useState } from 'react';
-import type { MoodEntry } from '../types';
+import { Gauge, Hand, Lock, Zap } from 'lucide-react';
+import type { MoodEntry, MoodSource } from '../types';
+import type { SentimentResult } from '../utils/sentiment';
+import { getScoreTone } from '../utils/sentiment';
 
 interface MoodSliderProps {
   value: MoodEntry;
   onChange: (mood: MoodEntry) => void;
+  /** Score calculé sur les éléments saisis pendant l'entretien */
+  sentiment?: SentimentResult;
+  /** Ressenti du one-to-one précédent, affiché comme repère */
+  previousMood?: MoodEntry | null;
 }
 
-const MOOD_EMOJIS = ['😫', '😔', '😐', '🙂', '😄'];
+const MOOD_STEPS: { value: number; emoji: string; label: string }[] = [
+  { value: 2, emoji: '😫', label: 'Difficile' },
+  { value: 4, emoji: '😔', label: 'Bof' },
+  { value: 6, emoji: '😐', label: 'Correct' },
+  { value: 8, emoji: '🙂', label: 'Bien' },
+  { value: 10, emoji: '😄', label: 'Top !' },
+];
 
-function getMoodEmoji(value: number): string {
-  const index = Math.floor((value - 1) / 2.5);
-  return MOOD_EMOJIS[Math.min(index, 4)];
-}
+const ENERGY_STEPS: { value: number; emoji: string; label: string }[] = [
+  { value: 2, emoji: '🪫', label: 'À plat' },
+  { value: 5, emoji: '😌', label: 'Correct' },
+  { value: 8, emoji: '💪', label: 'Motivé' },
+  { value: 10, emoji: '🚀', label: 'À fond' },
+];
 
-function getMoodLabel(value: number): string {
+export function getMoodLabel(value: number): string {
   if (value <= 2) return 'Difficile';
   if (value <= 4) return 'Bof';
   if (value <= 6) return 'Correct';
@@ -21,108 +35,213 @@ function getMoodLabel(value: number): string {
   return 'Top !';
 }
 
-function getMotivationLabel(value: number): string {
-  if (value <= 3) return 'Démotivé';
-  if (value <= 5) return 'Bof';
+export function getMoodEmoji(value: number): string {
+  if (value <= 2) return '😫';
+  if (value <= 4) return '😔';
+  if (value <= 6) return '😐';
+  if (value <= 8) return '🙂';
+  return '😄';
+}
+
+export function getMotivationLabel(value: number): string {
+  if (value <= 3) return 'À plat';
+  if (value <= 5) return 'En demi-teinte';
   if (value <= 7) return 'Motivé';
   return 'Très motivé !';
 }
 
-export function MoodSlider({ value, onChange }: MoodSliderProps) {
-  const [isDragging, setIsDragging] = useState<'mood' | 'energy' | null>(null);
+export function MoodSlider({ value, onChange, sentiment, previousMood }: MoodSliderProps) {
+  const source: MoodSource = value.source ?? 'manual';
+  const isAuto = source === 'auto';
+  const tone = getScoreTone(value.mood);
+  const autoAvailable = !!sentiment;
 
-  const handleMoodChange = (newMood: number) => {
-    onChange({ ...value, mood: newMood });
+  const setSource = (next: MoodSource) => {
+    if (next === 'auto' && sentiment?.hasData) {
+      onChange({ ...value, source: next, mood: sentiment.score10, computed: sentiment.score });
+      return;
+    }
+    onChange({ ...value, source: next });
   };
 
-  const handleEnergyChange = (newEnergy: number) => {
-    onChange({ ...value, energy: newEnergy });
+  const setMood = (mood: number) => {
+    // Toute saisie manuelle reprend la main sur le calcul automatique
+    onChange({ ...value, mood, source: 'manual' });
   };
+
+  const setEnergy = (energy: number) => onChange({ ...value, energy });
 
   return (
     <div className="space-y-8">
-      {/* Mood Slider */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
-            Comment te sens-tu sur ce sprint ?
-          </label>
-          <span className="text-3xl transition-transform duration-200"
-                style={{ transform: isDragging === 'mood' ? 'scale(1.2)' : 'scale(1)' }}>
-            {getMoodEmoji(value.mood)}
-          </span>
+      {/* ---------- Ressenti ---------- */}
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">Ressenti sur le sprint</h3>
+            <p className="text-xs text-slate-500">
+              {isAuto
+                ? 'Calculé en direct depuis les réussites et difficultés saisies.'
+                : 'Valeur fixée à la main pendant l\'échange.'}
+            </p>
+          </div>
+
+          {/* Sélecteur de mode : automatique ou manuel */}
+          {autoAvailable && (
+            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setSource('auto')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                  isAuto ? 'bg-white text-primary-700 shadow-soft' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Gauge className="h-3.5 w-3.5" />
+                Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => setSource('manual')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+                  !isAuto ? 'bg-white text-primary-700 shadow-soft' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Hand className="h-3.5 w-3.5" />
+                Manuel
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="relative">
+        {/* Valeur courante */}
+        <div className={`flex items-center gap-4 rounded-2xl border p-4 ${tone.bg} ${tone.border}`}>
+          <span className="text-4xl leading-none">{getMoodEmoji(value.mood)}</span>
+          <div className="flex-1">
+            <div className="flex items-baseline gap-1">
+              <span className={`text-3xl font-extrabold tabular-nums ${tone.text}`}>{value.mood}</span>
+              <span className="text-sm font-medium text-slate-400">/10</span>
+              <span className={`ml-2 text-sm font-semibold ${tone.text}`}>{getMoodLabel(value.mood)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+              {isAuto ? (
+                <span className="chip bg-white/70 text-primary-700">
+                  <Lock className="h-3 w-3" />
+                  Piloté par la saisie ({sentiment?.total ?? 0} élément{(sentiment?.total ?? 0) > 1 ? 's' : ''})
+                </span>
+              ) : (
+                <span className="chip bg-white/70 text-slate-600">
+                  <Hand className="h-3 w-3" />
+                  Saisie manuelle
+                </span>
+              )}
+              {previousMood && (
+                <span className="chip bg-white/70 text-slate-500">
+                  Précédent : {previousMood.mood}/10
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Raccourcis emoji */}
+        <div className="grid grid-cols-5 gap-2">
+          {MOOD_STEPS.map((step) => {
+            const active = !isAuto && value.mood === step.value;
+            return (
+              <button
+                key={step.value}
+                type="button"
+                onClick={() => setMood(step.value)}
+                className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 transition-all ${
+                  active
+                    ? 'border-primary-400 bg-primary-50 shadow-soft'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-xl leading-none">{step.emoji}</span>
+                <span className="text-[10px] font-medium text-slate-500">{step.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Réglage fin */}
+        <div>
           <input
             type="range"
             min="1"
             max="10"
             value={value.mood}
-            onChange={(e) => handleMoodChange(Number(e.target.value))}
-            onMouseDown={() => setIsDragging('mood')}
-            onMouseUp={() => setIsDragging(null)}
-            onTouchStart={() => setIsDragging('mood')}
-            onTouchEnd={() => setIsDragging(null)}
-            className="w-full h-3 bg-gradient-to-r from-red-300 via-yellow-300 to-green-300 rounded-full appearance-none cursor-pointer
-                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
-                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary-500
-                       [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-grab
-                       [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110"
+            onChange={(e) => setMood(Number(e.target.value))}
+            aria-label="Ressenti sur 10"
+            className="range-track bg-gradient-to-r from-negative-200 via-warn-200 to-positive-200
+                       [&::-webkit-slider-thumb]:border-primary-600 [&::-moz-range-thumb]:border-primary-600"
           />
-          <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <span>😫</span>
-            <span>😐</span>
-            <span>😄</span>
+          <div className="mt-2 flex justify-between text-[11px] text-slate-400">
+            <span>1 · très difficile</span>
+            <span>10 · excellent</span>
+          </div>
+          {isAuto && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              Bouger le curseur repasse automatiquement en mode manuel.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <div className="divider" />
+
+      {/* ---------- Motivation ---------- */}
+      <section className="space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">Niveau d'énergie / motivation</h3>
+            <p className="text-xs text-slate-500">Toujours déclaratif : c'est le collaborateur qui donne le chiffre.</p>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-xl bg-energy-50 px-3 py-1.5">
+            <Zap className="h-4 w-4 text-energy-600" />
+            <span className="text-sm font-bold tabular-nums text-energy-700">{value.energy}/10</span>
           </div>
         </div>
 
-        <div className="text-center">
-          <span className="inline-block px-4 py-1 bg-primary-50 text-primary-700 rounded-full text-sm font-medium">
-            {value.mood}/10 - {getMoodLabel(value.mood)}
-          </span>
+        <div className="grid grid-cols-4 gap-2">
+          {ENERGY_STEPS.map((step) => {
+            const active = value.energy === step.value;
+            return (
+              <button
+                key={step.value}
+                type="button"
+                onClick={() => setEnergy(step.value)}
+                className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 transition-all ${
+                  active
+                    ? 'border-energy-400 bg-energy-50 shadow-soft'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <span className="text-xl leading-none">{step.emoji}</span>
+                <span className="text-[10px] font-medium text-slate-500">{step.label}</span>
+              </button>
+            );
+          })}
         </div>
-      </div>
 
-      {/* Motivation Slider */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-gray-700">
-            Niveau de motivation ?
-          </label>
-          <span className="text-2xl">
-            {value.energy > 5 ? '💪' : '😩'}
-          </span>
-        </div>
-
-        <div className="relative">
+        <div>
           <input
             type="range"
             min="1"
             max="10"
             value={value.energy}
-            onChange={(e) => handleEnergyChange(Number(e.target.value))}
-            onMouseDown={() => setIsDragging('energy')}
-            onMouseUp={() => setIsDragging(null)}
-            onTouchStart={() => setIsDragging('energy')}
-            onTouchEnd={() => setIsDragging(null)}
-            className="w-full h-3 bg-gradient-to-r from-gray-300 via-blue-300 to-indigo-400 rounded-full appearance-none cursor-pointer
-                       [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6
-                       [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-indigo-500
-                       [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:cursor-grab"
+            onChange={(e) => setEnergy(Number(e.target.value))}
+            aria-label="Motivation sur 10"
+            className="range-track bg-gradient-to-r from-slate-200 via-energy-200 to-energy-400
+                       [&::-webkit-slider-thumb]:border-energy-500 [&::-moz-range-thumb]:border-energy-500"
           />
-          <div className="flex justify-between mt-2 text-xs text-gray-500">
-            <span>😩 Pas motivé</span>
-            <span>💪 À fond !</span>
+          <div className="mt-2 flex justify-between text-[11px] text-slate-400">
+            <span>🪫 Pas motivé</span>
+            <span className="font-medium text-energy-600">{getMotivationLabel(value.energy)}</span>
+            <span>🚀 À fond</span>
           </div>
         </div>
-
-        <div className="text-center">
-          <span className="inline-block px-4 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium">
-            {value.energy}/10 - {getMotivationLabel(value.energy)}
-          </span>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

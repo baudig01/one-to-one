@@ -5,3 +5,5 @@ export { StepIndicator } from './StepIndicator';
 export { MemberSelector } from './MemberSelector';
 export { AdminCodeModal } from './AdminCodeModal';
 export { ProtectedRoute } from './ProtectedRoute';
+export { SentimentGauge } from './SentimentGauge';
+export { Sparkline } from './Sparkline';

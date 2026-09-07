@@ -22,10 +22,12 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 text-primary-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Chargement...</p>
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lift">
+            <Loader2 className="h-7 w-7 animate-spin text-white" />
+          </div>
+          <p className="text-sm text-slate-500">Chargement des one-to-one…</p>
         </div>
       </div>
     );
@@ -33,13 +35,10 @@ function App() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center p-4">
         <div className="card max-w-md text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-primary"
-          >
+          <p className="mb-4 text-sm text-negative-600">{error}</p>
+          <button onClick={() => window.location.reload()} className="btn-primary mx-auto">
             Réessayer
           </button>
         </div>

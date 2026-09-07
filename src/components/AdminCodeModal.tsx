@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { X, Lock } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Lock, ShieldCheck, X } from 'lucide-react';
 
 interface AdminCodeModalProps {
   isOpen: boolean;
@@ -10,6 +10,16 @@ interface AdminCodeModalProps {
 export function AdminCodeModal({ isOpen, onClose, onSuccess }: AdminCodeModalProps) {
   const [code, setCode] = useState('');
   const [error, setError] = useState(false);
+
+  // Fermeture au clavier
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -35,52 +45,61 @@ export function AdminCodeModal({ isOpen, onClose, onSuccess }: AdminCodeModalPro
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex items-center gap-2">
-            <Lock className="w-5 h-5 text-orange-500" />
-            <h2 className="font-semibold text-gray-800">Accès Admin</h2>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm animate-fadeIn"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-lift animate-pop"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Accès admin"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-warn-100 text-warn-700">
+              <Lock className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="font-semibold text-slate-900">Accès admin</h2>
+              <p className="text-xs text-slate-500">Réservé au lead de l'équipe</p>
+            </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
+          <button onClick={onClose} className="btn-icon" aria-label="Fermer">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 p-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="mb-1.5 block text-sm font-medium text-slate-700" htmlFor="admin-code">
               Code d'accès
             </label>
             <input
+              id="admin-code"
               type="password"
               value={code}
-              onChange={(e) => { setCode(e.target.value); setError(false); }}
-              placeholder="Entrez le code"
-              className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500
-                ${error ? 'border-red-500 bg-red-50' : 'border-gray-200'}`}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setError(false);
+              }}
+              placeholder="••••••"
+              className={`input-field text-center tracking-[0.3em] ${
+                error ? 'border-negative-400 bg-negative-50 focus:ring-negative-500/10' : ''
+              }`}
               autoFocus
             />
-            {error && (
-              <p className="text-sm text-red-500 mt-1">Code incorrect</p>
-            )}
+            {error && <p className="mt-1.5 text-sm text-negative-600">Code incorrect</p>}
           </div>
 
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-            >
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">
               Annuler
             </button>
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-            >
+            <button type="submit" className="btn-primary flex-1">
+              <ShieldCheck className="h-4 w-4" />
               Valider
             </button>
           </div>

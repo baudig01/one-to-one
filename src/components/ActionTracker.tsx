@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Check, Circle, User, UserCog, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, ListChecks, Plus, Sparkles, Trash2, User, UserCog } from 'lucide-react';
 import type { ActionItem } from '../types';
 
 interface ActionTrackerProps {
@@ -20,178 +20,207 @@ export function ActionTracker({
 
   const addAction = () => {
     if (!newActionText.trim()) return;
-
-    const newAction: ActionItem = {
-      id: crypto.randomUUID(),
-      text: newActionText.trim(),
-      assignee: newActionAssignee,
-      completed: false,
-      createdAt: new Date(),
-    };
-
-    onChange([...currentActions, newAction]);
+    onChange([
+      ...currentActions,
+      {
+        id: crypto.randomUUID(),
+        text: newActionText.trim(),
+        assignee: newActionAssignee,
+        completed: false,
+        createdAt: new Date(),
+      },
+    ]);
     setNewActionText('');
   };
 
   const togglePreviousAction = (id: string) => {
     onUpdatePrevious(
-      previousActions.map(action =>
+      previousActions.map((action) =>
         action.id === id
-          ? { ...action, completed: !action.completed, completedAt: !action.completed ? new Date() : undefined }
+          ? {
+              ...action,
+              completed: !action.completed,
+              completedAt: !action.completed ? new Date() : undefined,
+            }
           : action
       )
     );
   };
 
-  const removeCurrentAction = (id: string) => {
-    onChange(currentActions.filter(action => action.id !== id));
-  };
+  const removeCurrentAction = (id: string) => onChange(currentActions.filter((a) => a.id !== id));
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      addAction();
-    }
-  };
-
-  const pendingPreviousActions = previousActions.filter(a => !a.completed);
-  const completedPreviousActions = previousActions.filter(a => a.completed);
+  const completedPrevious = previousActions.filter((a) => a.completed).length;
+  const pendingPrevious = previousActions.length - completedPrevious;
+  const completionRate =
+    previousActions.length === 0 ? 0 : Math.round((completedPrevious / previousActions.length) * 100);
 
   return (
     <div className="space-y-6">
-      {/* Previous Actions Review */}
+      {/* ---------- Revue des actions précédentes ---------- */}
       {previousActions.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-            <span>📋</span>
-            Actions du meeting précédent
-            <span className="px-2 py-0.5 bg-gray-100 rounded-full text-xs">
-              {completedPreviousActions.length}/{previousActions.length} terminées
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <ListChecks className="h-4 w-4 text-slate-400" />
+              Actions du one-to-one précédent
+            </h4>
+            <span className="chip-neutral tabular-nums">
+              {completedPrevious}/{previousActions.length} terminées · {completionRate}%
             </span>
-          </h4>
+          </div>
+
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-positive-500 transition-all duration-500 ease-out"
+              style={{ width: `${completionRate}%` }}
+            />
+          </div>
 
           <div className="space-y-2">
             {previousActions.map((action) => (
-              <div
+              <button
                 key={action.id}
+                type="button"
                 onClick={() => togglePreviousAction(action.id)}
-                className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all
-                  ${action.completed
-                    ? 'bg-green-50 border-green-200 text-green-700'
-                    : 'bg-orange-50 border-orange-200 text-orange-800 hover:bg-orange-100'}`}
+                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-all ${
+                  action.completed
+                    ? 'border-positive-200 bg-positive-50 text-positive-800'
+                    : 'border-warn-200 bg-warn-50 text-warn-800 hover:border-warn-300 hover:bg-warn-100/70'
+                }`}
               >
-                <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center
-                  ${action.completed
-                    ? 'bg-green-500 border-green-500 text-white'
-                    : 'border-orange-400'}`}
+                <span
+                  className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                    action.completed
+                      ? 'border-positive-500 bg-positive-500 text-white'
+                      : 'border-warn-400 bg-white'
+                  }`}
                 >
-                  {action.completed && <Check className="w-4 h-4" />}
-                </div>
-                <span className={`flex-1 ${action.completed ? 'line-through opacity-70' : ''}`}>
+                  {action.completed && <Check className="h-4 w-4" />}
+                </span>
+                <span className={`flex-1 text-sm ${action.completed ? 'line-through opacity-70' : ''}`}>
                   {action.text}
                 </span>
-                <span className="flex-shrink-0">
-                  {action.assignee === 'lead' ? (
-                    <UserCog className="w-4 h-4 opacity-50" />
-                  ) : (
-                    <User className="w-4 h-4 opacity-50" />
-                  )}
+                <span className="flex-shrink-0 opacity-50" title={action.assignee === 'lead' ? 'Lead' : 'Membre'}>
+                  {action.assignee === 'lead' ? <UserCog className="h-4 w-4" /> : <User className="h-4 w-4" />}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
 
-          {pendingPreviousActions.length > 0 && (
-            <p className="text-sm text-orange-600">
-              ⚠️ {pendingPreviousActions.length} action(s) non terminée(s) - Cliquer pour marquer comme fait
+          {pendingPrevious > 0 && (
+            <p className="flex items-center gap-2 rounded-xl bg-warn-50 px-3 py-2 text-xs text-warn-700">
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+              {pendingPrevious} action{pendingPrevious > 1 ? 's' : ''} non terminée
+              {pendingPrevious > 1 ? 's' : ''} — elles seront reportées sur ce one-to-one.
             </p>
           )}
-        </div>
+        </section>
       )}
 
-      {/* New Actions */}
-      <div className="space-y-3">
-        <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <span>✨</span>
-          Nouvelles actions pour ce sprint
+      {previousActions.length > 0 && <div className="divider" />}
+
+      {/* ---------- Nouvelles actions ---------- */}
+      <section className="space-y-3">
+        <h4 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <Sparkles className="h-4 w-4 text-primary-500" />
+          Nouvelles actions pour le prochain sprint
         </h4>
 
-        {/* Assignee Toggle */}
-        <div className="flex gap-2">
+        <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
           <button
+            type="button"
             onClick={() => setNewActionAssignee('member')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm
-              ${newActionAssignee === 'member'
-                ? 'bg-blue-50 border-blue-400 text-blue-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+              newActionAssignee === 'member'
+                ? 'bg-white text-primary-700 shadow-soft'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
           >
-            <User className="w-4 h-4" />
-            <span>Membre</span>
+            <User className="h-3.5 w-3.5" />
+            Pour le membre
           </button>
           <button
+            type="button"
             onClick={() => setNewActionAssignee('lead')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-all text-sm
-              ${newActionAssignee === 'lead'
-                ? 'bg-purple-50 border-purple-400 text-purple-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
+              newActionAssignee === 'lead'
+                ? 'bg-white text-primary-700 shadow-soft'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
           >
-            <UserCog className="w-4 h-4" />
-            <span>Lead (toi)</span>
+            <UserCog className="h-3.5 w-3.5" />
+            Pour moi (lead)
           </button>
         </div>
 
-        {/* Input */}
         <div className="flex gap-2">
           <input
             type="text"
             value={newActionText}
             onChange={(e) => setNewActionText(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ajouter une action..."
-            className="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                addAction();
+              }
+            }}
+            placeholder="Action concrète, avec un verbe…"
+            className="input-field flex-1"
           />
           <button
+            type="button"
             onClick={addAction}
             disabled={!newActionText.trim()}
-            className="px-4 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="btn-primary px-4"
+            aria-label="Ajouter une action"
           >
-            <Plus className="w-5 h-5" />
+            <Plus className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Current Actions List */}
-        {currentActions.length > 0 && (
+        {currentActions.length > 0 ? (
           <div className="space-y-2">
             {currentActions.map((action) => (
               <div
                 key={action.id}
-                className={`flex items-center gap-3 p-3 rounded-lg border-2
-                  ${action.assignee === 'lead'
-                    ? 'bg-purple-50 border-purple-200'
-                    : 'bg-blue-50 border-blue-200'}`}
+                className={`group flex items-center gap-3 rounded-xl border p-3 animate-slideUp ${
+                  action.assignee === 'lead'
+                    ? 'border-primary-200 bg-primary-50/70'
+                    : 'border-energy-200 bg-energy-50/70'
+                }`}
               >
-                <Circle className="w-5 h-5 text-gray-300 flex-shrink-0" />
-                <span className="flex-1 text-sm">{action.text}</span>
-                <span className="flex-shrink-0 text-xs opacity-50">
+                <span
+                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-white ${
+                    action.assignee === 'lead' ? 'bg-primary-500' : 'bg-energy-500'
+                  }`}
+                >
+                  {action.assignee === 'lead' ? (
+                    <UserCog className="h-3.5 w-3.5" />
+                  ) : (
+                    <User className="h-3.5 w-3.5" />
+                  )}
+                </span>
+                <span className="flex-1 text-sm text-slate-800">{action.text}</span>
+                <span className="flex-shrink-0 text-[11px] font-medium text-slate-400">
                   {action.assignee === 'lead' ? 'Lead' : 'Membre'}
                 </span>
                 <button
+                  type="button"
                   onClick={() => removeCurrentAction(action.id)}
-                  className="p-1 hover:bg-black/10 rounded transition-colors text-gray-400 hover:text-red-500"
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-negative-50 hover:text-negative-600"
+                  aria-label="Supprimer l'action"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             ))}
           </div>
-        )}
-
-        {currentActions.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-4">
-            Ajoute 1-2 actions concrètes pour le prochain sprint
+        ) : (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 py-6 text-center text-sm text-slate-500">
+            1 à 2 actions concrètes suffisent — mieux vaut peu et tenu.
           </p>
         )}
-      </div>
+      </section>
     </div>
   );
 }

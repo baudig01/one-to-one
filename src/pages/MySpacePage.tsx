@@ -1,20 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  KeyRound,
+  AlertCircle,
+  Bell,
   BookOpen,
+  CheckCircle2,
+  Clock,
+  KeyRound,
+  LogOut,
   Plus,
   Trash2,
-  Bell,
-  LogOut,
-  AlertCircle,
-  CheckCircle2,
-  Clock
 } from 'lucide-react';
-import type { TeamMember, MemberNote, OneToOneRequest } from '../types';
-import { WIN_PAIN_CONFIG } from '../types';
+import type { TeamMember, MemberNote, OneToOneRequest, WinPainItem, WinPainType } from '../types';
+import { WIN_PAIN_CONFIG, WIN_PAIN_TYPES } from '../types';
+import { SentimentGauge } from '../components';
+import { computeSentiment } from '../utils/sentiment';
 import {
   getMemberByAccessCode,
   fetchNotesByMember,
@@ -25,8 +27,6 @@ import {
   cancelRequest
 } from '../services/firebase';
 import { sendOneToOneRequestNotification } from '../services/email';
-
-type NoteType = 'win' | 'pain' | 'idea' | 'blocker';
 
 export function MySpacePage() {
   const navigate = useNavigate();
@@ -39,7 +39,7 @@ export function MySpacePage() {
   const [loading, setLoading] = useState(false);
 
   // Form state for new note
-  const [newNoteType, setNewNoteType] = useState<NoteType>('win');
+  const [newNoteType, setNewNoteType] = useState<WinPainType>('win');
   const [newNoteText, setNewNoteText] = useState('');
 
   // Form state for request
@@ -167,24 +167,29 @@ export function MySpacePage() {
   };
 
   const urgencyConfig = {
-    low: { label: 'Pas urgent', color: 'bg-green-100 text-green-700' },
-    medium: { label: 'Normal', color: 'bg-yellow-100 text-yellow-700' },
-    high: { label: 'Urgent', color: 'bg-red-100 text-red-700' },
+    low: { label: 'Pas urgent', color: 'bg-positive-50 text-positive-700 border border-positive-200' },
+    medium: { label: 'Normal', color: 'bg-warn-50 text-warn-800 border border-warn-200' },
+    high: { label: 'Urgent', color: 'bg-negative-50 text-negative-700 border border-negative-200' },
   };
 
-  // Login screen
+  // Aperçu du ressenti que produiraient les notes en attente
+  const noteItems: WinPainItem[] = useMemo(
+    () => notes.map(note => ({ id: note.id, type: note.type, text: note.text })),
+    [notes]
+  );
+  const sentiment = useMemo(() => computeSentiment(noteItems), [noteItems]);
+
+  // ---------- Écran de connexion ----------
   if (!member) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="card max-w-md w-full">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <KeyRound className="w-8 h-8 text-primary-600" />
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="card w-full max-w-md">
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lift">
+              <KeyRound className="h-7 w-7 text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Mon Espace</h1>
-            <p className="text-gray-500 mt-1">
-              Entre ton code d'accès personnel
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Mon espace</h1>
+            <p className="mt-1 text-sm text-slate-500">Entre ton code d'accès personnel</p>
           </div>
 
           <form
@@ -199,13 +204,13 @@ export function MySpacePage() {
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
                 placeholder="ABC123"
-                className="input-field text-center text-2xl tracking-widest uppercase w-48"
+                className="input-field w-56 text-center text-2xl font-semibold uppercase tracking-[0.35em]"
                 maxLength={6}
                 autoFocus
               />
               {codeError && (
-                <p className="text-red-500 text-sm mt-2 flex items-center justify-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
+                <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-negative-600">
+                  <AlertCircle className="h-4 w-4" />
                   {codeError}
                 </p>
               )}
@@ -214,13 +219,13 @@ export function MySpacePage() {
             <button
               type="submit"
               disabled={accessCode.length < 6 || loading}
-              className="w-full btn-primary py-3"
+              className="btn-primary w-full py-3"
             >
-              {loading ? 'Connexion...' : 'Accéder à mon espace'}
+              {loading ? 'Connexion…' : 'Accéder à mon espace'}
             </button>
           </form>
 
-          <p className="text-xs text-gray-400 text-center mt-6">
+          <p className="mt-6 text-center text-xs text-slate-400">
             Tu n'as pas de code ? Demande-le à ton lead.
           </p>
         </div>
@@ -228,113 +233,94 @@ export function MySpacePage() {
     );
   }
 
-  // Member dashboard
+  // ---------- Espace du collaborateur ----------
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
-                Bonjour {member.name} !
+    <div className="min-h-screen pb-10">
+      <header className="glass-header">
+        <div className="mx-auto max-w-2xl px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-bold tracking-tight text-slate-900">
+                Bonjour {member.name} 👋
               </h1>
-              <p className="text-sm text-gray-500">{member.role}</p>
+              <p className="truncate text-xs text-slate-500">{member.role}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <LogOut className="w-4 h-4" />
-              Déconnexion
+            <button onClick={handleLogout} className="btn-ghost px-3 py-2 text-xs">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6 space-y-6">
-        {/* Request One-to-One Section */}
+      <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+        {/* ---------- Demande de one-to-one ---------- */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Bell className="w-5 h-5" />
-              Demander un One-to-One
-            </h2>
-          </div>
+          <h2 className="mb-4 flex items-center gap-2 text-base font-semibold text-slate-900">
+            <Bell className="h-4 w-4 text-slate-400" />
+            Demander un one-to-one
+          </h2>
 
           {acceptedRequest ? (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
-                <div>
-                  <p className="font-medium text-green-800">
-                    One-to-One planifié !
-                  </p>
-                  <p className="text-sm text-green-600 mt-1">
-                    {format(new Date(acceptedRequest.scheduledAt!), "EEEE dd MMMM 'à' HH:mm", { locale: fr })}
-                  </p>
-                </div>
+            <div className="flex items-start gap-3 rounded-2xl border border-positive-200 bg-positive-50 p-4">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-positive-600" />
+              <div>
+                <p className="font-medium text-positive-800">One-to-one planifié !</p>
+                <p className="mt-0.5 text-sm text-positive-700">
+                  {format(new Date(acceptedRequest.scheduledAt!), "EEEE dd MMMM 'à' HH:mm", { locale: fr })}
+                </p>
               </div>
             </div>
           ) : pendingRequest ? (
-            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <Clock className="w-5 h-5 text-primary-600 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-medium text-primary-800">
-                    Demande en attente
-                  </p>
-                  <p className="text-sm text-primary-600 mt-1">
-                    Créée le {format(new Date(pendingRequest.createdAt), 'dd MMMM à HH:mm', { locale: fr })}
-                  </p>
-                  {pendingRequest.reason && (
-                    <p className="text-sm text-primary-700 mt-2">
-                      "{pendingRequest.reason}"
-                    </p>
-                  )}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${urgencyConfig[pendingRequest.urgency].color}`}>
-                      {urgencyConfig[pendingRequest.urgency].label}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  onClick={handleCancelRequest}
-                  className="p-2 text-red-500 hover:bg-red-100 rounded-lg transition-colors"
-                  title="Annuler la demande"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+            <div className="flex items-start gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4">
+              <Clock className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary-600" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium text-primary-900">Demande en attente</p>
+                <p className="mt-0.5 text-sm text-primary-700">
+                  Créée le {format(new Date(pendingRequest.createdAt), 'dd MMMM à HH:mm', { locale: fr })}
+                </p>
+                {pendingRequest.reason && (
+                  <p className="mt-2 text-sm italic text-primary-800">« {pendingRequest.reason} »</p>
+                )}
+                <span className={`chip mt-2 ${urgencyConfig[pendingRequest.urgency].color}`}>
+                  {urgencyConfig[pendingRequest.urgency].label}
+                </span>
               </div>
+              <button
+                onClick={handleCancelRequest}
+                className="btn-icon hover:bg-negative-50 hover:text-negative-600"
+                title="Annuler la demande"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
           ) : showRequestForm ? (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Raison (optionnel)
                 </label>
                 <textarea
                   value={requestReason}
                   onChange={(e) => setRequestReason(e.target.value)}
                   placeholder="Pourquoi souhaites-tu un one-to-one ?"
-                  className="input-field"
+                  className="input-field resize-none"
                   rows={2}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Urgence
-                </label>
-                <div className="flex gap-2">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Urgence</label>
+                <div className="grid grid-cols-3 gap-2">
                   {(['low', 'medium', 'high'] as const).map((level) => (
                     <button
                       key={level}
                       onClick={() => setRequestUrgency(level)}
-                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors
-                        ${requestUrgency === level
-                          ? urgencyConfig[level].color + ' ring-2 ring-offset-1 ring-current'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                      className={`rounded-xl px-3 py-2 text-xs font-medium transition-all ${
+                        requestUrgency === level
+                          ? urgencyConfig[level].color + ' shadow-soft'
+                          : 'border border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                      }`}
                     >
                       {urgencyConfig[level].label}
                     </button>
@@ -343,16 +329,10 @@ export function MySpacePage() {
               </div>
 
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowRequestForm(false)}
-                  className="flex-1 py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                >
+                <button onClick={() => setShowRequestForm(false)} className="btn-secondary flex-1">
                   Annuler
                 </button>
-                <button
-                  onClick={handleRequestOneToOne}
-                  className="flex-1 btn-primary"
-                >
+                <button onClick={handleRequestOneToOne} className="btn-primary flex-1">
                   Envoyer la demande
                 </button>
               </div>
@@ -360,39 +340,49 @@ export function MySpacePage() {
           ) : (
             <button
               onClick={() => setShowRequestForm(true)}
-              className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-primary-400 hover:text-primary-600 transition-colors flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 py-3 text-sm text-slate-600
+                         transition-all hover:border-primary-400 hover:bg-primary-50/60 hover:text-primary-700"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="h-5 w-5" />
               J'ai besoin d'un one-to-one
             </button>
           )}
         </div>
 
-        {/* Notebook Section */}
+        {/* ---------- Carnet de bord ---------- */}
         <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <BookOpen className="w-5 h-5" />
-            Mon Carnet de Bord
+          <h2 className="mb-1 flex items-center gap-2 text-base font-semibold text-slate-900">
+            <BookOpen className="h-4 w-4 text-slate-400" />
+            Mon carnet de bord
           </h2>
-
-          <p className="text-sm text-gray-500 mb-4">
-            Note tes réussites, difficultés et idées au fil du temps.
-            Elles seront abordées lors du prochain one-to-one.
+          <p className="mb-4 text-sm text-slate-500">
+            Note tes réussites, difficultés et idées au fil du temps. Elles seront chargées automatiquement
+            dans ton prochain one-to-one.
           </p>
 
-          {/* Add new note form */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-4">
-            <div className="flex gap-2 mb-3 flex-wrap">
-              {(Object.keys(WIN_PAIN_CONFIG) as NoteType[]).map((type) => {
+          {/* Aperçu du ressenti que ces notes produiront */}
+          {sentiment.hasData && (
+            <div className={`mb-4 rounded-2xl border p-4 ${sentiment.tone.bg} ${sentiment.tone.border}`}>
+              <SentimentGauge sentiment={sentiment} variant="compact" />
+              <p className="mt-3 text-[11px] text-slate-500">
+                Aperçu du ressenti calculé sur tes notes — il sera repris comme point de départ de l'échange.
+              </p>
+            </div>
+          )}
+
+          {/* Nouvelle note */}
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {WIN_PAIN_TYPES.map((type) => {
                 const config = WIN_PAIN_CONFIG[type];
+                const active = newNoteType === type;
                 return (
                   <button
                     key={type}
                     onClick={() => setNewNoteType(type)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors
-                      ${newNoteType === type
-                        ? config.color
-                        : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                    className={`rounded-xl px-2.5 py-2 text-xs font-medium transition-all ${
+                      active ? config.chipActive : config.chip
+                    }`}
                   >
                     {config.emoji} {config.label}
                   </button>
@@ -405,7 +395,7 @@ export function MySpacePage() {
                 type="text"
                 value={newNoteText}
                 onChange={(e) => setNewNoteText(e.target.value)}
-                placeholder={`Ajouter une ${WIN_PAIN_CONFIG[newNoteType].label.toLowerCase()}...`}
+                placeholder={WIN_PAIN_CONFIG[newNoteType].placeholder}
                 className="input-field flex-1"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newNoteText.trim()) {
@@ -417,18 +407,19 @@ export function MySpacePage() {
                 onClick={handleAddNote}
                 disabled={!newNoteText.trim()}
                 className="btn-primary px-4"
+                aria-label="Ajouter la note"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Notes list */}
+          {/* Liste des notes */}
           {notes.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <BookOpen className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Ton carnet est vide.</p>
-              <p className="text-sm">Ajoute ta première note ci-dessus !</p>
+            <div className="rounded-2xl border border-dashed border-slate-200 py-10 text-center">
+              <BookOpen className="mx-auto mb-2 h-10 w-10 text-slate-300" />
+              <p className="font-medium text-slate-600">Ton carnet est vide</p>
+              <p className="mt-0.5 text-sm text-slate-400">Ajoute ta première note ci-dessus !</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -437,21 +428,21 @@ export function MySpacePage() {
                 return (
                   <div
                     key={note.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg ${config.color}`}
+                    className={`group flex items-start gap-3 rounded-xl border p-3 ${config.surface}`}
                   >
-                    <span className="text-lg">{config.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm">{note.text}</p>
-                      <p className="text-xs opacity-70 mt-1">
+                    <span className="text-lg leading-none">{config.emoji}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-snug">{note.text}</p>
+                      <p className="mt-1 text-[11px] opacity-70">
                         {format(new Date(note.createdAt), 'dd MMM à HH:mm', { locale: fr })}
                       </p>
                     </div>
                     <button
                       onClick={() => handleDeleteNote(note.id)}
-                      className="p-1 hover:bg-black/10 rounded transition-colors"
+                      className="rounded-lg p-1 opacity-60 transition-all hover:bg-black/10 group-hover:opacity-100"
                       title="Supprimer"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 );
@@ -460,13 +451,9 @@ export function MySpacePage() {
           )}
 
           {notes.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>
-                  {notes.length} note{notes.length > 1 ? 's' : ''} en attente du prochain one-to-one
-                </span>
-              </div>
+            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 text-sm text-slate-500">
+              <CheckCircle2 className="h-4 w-4 text-positive-500" />
+              {notes.length} note{notes.length > 1 ? 's' : ''} en attente du prochain one-to-one
             </div>
           )}
         </div>
